@@ -36,6 +36,8 @@
     "typeorm": "^0.3.0"
   },
   "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
     "uuid": "^11.1.0",
     "zod": "^4.4.3"
   },
@@ -47,6 +49,7 @@
     "jest-junit": "^16.0.0",
     "jest-ts-webcompat-resolver": "^1.0.1",
     "prettier": "^3.6.2",
+    "reflect-metadata": "^0.2.2",
     "shx": "^0.3.4",
     "ts-jest": "^29.4.6",
     "typeorm": "^0.3.28",

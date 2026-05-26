@@ -213,6 +213,12 @@ importers:
 
   packages/core:
     dependencies:
+      class-transformer:
+        specifier: ^0.5.1
+        version: 0.5.1
+      class-validator:
+        specifier: ^0.14.1
+        version: 0.14.4
       uuid:
         specifier: ^11.1.0
         version: 11.1.0
@@ -241,6 +247,9 @@ importers:
       prettier:
         specifier: ^3.6.2
         version: 3.8.1
+      reflect-metadata:
+        specifier: ^0.2.2
+        version: 0.2.2
       shx:
         specifier: ^0.3.4
         version: 0.3.4

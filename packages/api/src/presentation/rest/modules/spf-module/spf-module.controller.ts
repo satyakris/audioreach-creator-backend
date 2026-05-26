@@ -34,6 +34,21 @@ import {
 } from './dto/request/spf-module-request.dto.js';
 import {ApiDocumentationWithExample} from '../../common/swagger-doc/swagger.decorator.js';
 import {ApiResult} from '../../common/dto/api-response/api-result.dto.js';
+import {QueryBus, GetCkvCalibrationDataQuery} from '@arc/core';
+import type {
+  CkvCalibrationDataModel,
+  ParameterCalibrationDataModel,
+  ParsedElementData,
+  ParsedElementSchema,
+  ConfigElementData,
+  ElementArrayData,
+  StructData,
+} from '@arc/core';
+import type {ChangeInfoDto} from '../../common/dto/base.dto.js';
+import {NameValuePairDto} from '../../common/dto/element-data/elements/config-element/name-value-pair.dto.js';
+import {KeyValueDto, KeyDto, ValueDto} from '../../common/dto/key-value.dto.js';
+
+type ElementDto = ConfigElementDto | ElementTemplateArrayDto | StructDto;
 
 /**
  * Controller to support all module related APIs for usecase design
@@ -62,7 +77,7 @@ import {ApiResult} from '../../common/dto/api-response/api-result.dto.js';
   CloneSpfModuleRequest,
 )
 export class SpfModuleController extends BaseController {
-  constructor() {
+  constructor(private readonly queryBus: QueryBus) {
     super();
   }
 
@@ -273,24 +288,44 @@ export class SpfModuleController extends BaseController {
     @Param('spfModuleSystemId') spfModuleSystemId: string,
     @Param('ckvSystemId') ckvSystemId: string,
     @Query('param-system-ids') paramSystemIds?: string,
-  ): Promise<ApiResult<CalDataDto>> {
-    await Promise.resolve(); // Placeholder to satisfy linter
-    console.log(
-      'Getting calibration data for SPF module:',
+  ): Promise<ApiResult<SpfModuleCalDataResponseDto>> {
+    const projectIdNum = this.parseIntParam(projectId, 'projectId');
+    const moduleSystemIdNum = this.parseIntParam(
       spfModuleSystemId,
-      'in project:',
-      projectId,
-      'with CKV system ID:',
-      ckvSystemId,
-      paramSystemIds
-        ? 'and parameter system IDs:'
-        : 'for all parameter system IDs',
-      paramSystemIds || '',
+      'spfModuleSystemId',
     );
-    throw new HttpException(
-      'Calibration data retrieval functionality is not implemented yet.',
-      HttpStatus.NOT_IMPLEMENTED,
-    );
+    const ckvSystemIdNum = this.parseIntParam(ckvSystemId, 'ckvSystemId');
+    const parsedParamIds = paramSystemIds
+      ? paramSystemIds
+          .split(',')
+          .map(id => this.parseIntParam(id.trim(), 'param-system-ids'))
+      : undefined;
+
+    try {
+      const query = new GetCkvCalibrationDataQuery(
+        projectIdNum,
+        moduleSystemIdNum,
+        ckvSystemIdNum,
+        'client-id',
+        parsedParamIds,
+      );
+      const model = await this.queryBus.execute<CkvCalibrationDataModel>(query);
+      return {
+        data: this.transformToCalibrationDataDto(model),
+        success: true,
+        message: 'Calibration data retrieved successfully',
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.toLowerCase().includes('not found')) {
+        throw new HttpException(msg, HttpStatus.NOT_FOUND);
+      }
+      throw new HttpException(
+        'Failed to retrieve calibration data',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
   }
 
   /**
@@ -576,5 +611,191 @@ export class SpfModuleController extends BaseController {
       'Tag data update functionality is not implemented yet.',
       HttpStatus.NOT_IMPLEMENTED,
     );
+  }
+
+  // ── Private helpers ───────────────────────────────────────────────────────
+
+  /**
+   * Parses a string parameter as an integer, supporting both decimal and hex (0x) notation.
+   * Throws HTTP 400 if the value is not a valid integer.
+   */
+  private parseIntParam(value: string, paramName: string): number {
+    const trimmed = value.trim();
+    const num =
+      trimmed.startsWith('0x') || trimmed.startsWith('0X')
+        ? Number.parseInt(trimmed, 16)
+        : Number.parseInt(trimmed, 10);
+    if (Number.isNaN(num)) {
+      throw new HttpException(
+        `Invalid ${paramName}: "${value}" is not a valid integer or hex value`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return num;
+  }
+
+  private toChangeInfoDto(ci: {
+    changeType: string;
+    changeId?: number;
+    changeStatus?: string;
+  }): ChangeInfoDto {
+    return {
+      changeType: ci.changeType as ChangeInfoDto['changeType'],
+      changeId: ci.changeId?.toString(),
+      changeStatus: ci.changeStatus as ChangeInfoDto['changeStatus'],
+    };
+  }
+
+  private transformToCalibrationDataDto(
+    model: CkvCalibrationDataModel,
+  ): SpfModuleCalDataResponseDto {
+    const dto = new SpfModuleCalDataResponseDto();
+    dto.systemId = model.ckv.systemId.toString();
+    dto.changeInfo = this.toChangeInfoDto(model.ckv.changeInfo);
+    dto.Ckv = model.ckv.keyValuePairs.map(kv => {
+      const kvDto = new KeyValueDto();
+      const keyDto = new KeyDto();
+      keyDto.keyId = kv.key.keyId;
+      keyDto.name = kv.key.name;
+      keyDto.systemId = kv.key.systemId.toString();
+      const valueDto = new ValueDto();
+      valueDto.valueId = kv.value.valueId;
+      valueDto.name = kv.value.name;
+      valueDto.systemId = kv.value.systemId.toString();
+      kvDto.key = keyDto;
+      kvDto.value = valueDto;
+      return kvDto;
+    });
+    dto.parameters = model.parameters.map(p => this.transformParameterDto(p));
+    return dto;
+  }
+
+  private transformParameterDto(
+    p: ParameterCalibrationDataModel,
+  ): ParameterDetailDto {
+    const dto = new ParameterDetailDto();
+    dto.systemId = p.parameterSystemId.toString();
+    dto.changeInfo = this.toChangeInfoDto(p.changeInfo);
+    dto.parameterId = p.parameterId.toString();
+    dto.name = p.name;
+    dto.description = p.description;
+    dto.isHidden = p.isHidden;
+    dto.isReadOnly = p.isReadOnly;
+    dto.elements = p.parsedData ? this.transformElements(p.parsedData) : [];
+    return dto;
+  }
+
+  private transformElements(elements: ParsedElementData[]): ElementDto[] {
+    return elements.map(e => this.transformElement(e));
+  }
+
+  private transformElement(element: ParsedElementData): ElementDto {
+    if (element.type === 'CONFIG_ELEMENT') {
+      return this.transformConfigElement(element);
+    }
+    if (element.type === 'ELEMENT_ARRAY') {
+      return this.transformElementArray(element);
+    }
+    return this.transformStruct(element);
+  }
+
+  private transformConfigElement(e: ConfigElementData): ConfigElementDto {
+    const dto = new ConfigElementDto();
+    dto.name = e.name;
+    dto.value = e.value;
+    dto.description = e.description;
+    dto.group = e.group;
+    dto.subgroup = e.subgroup;
+    dto.isReadOnly = e.isReadOnly;
+    dto.unit = e.unit;
+    dto.displayType = e.displayType as ConfigElementDto['displayType'];
+    dto.policy = e.policy as ConfigElementDto['policy'];
+    dto.qFormat = e.qFormat;
+    dto.precision = e.precision;
+    dto.min = e.min === undefined ? undefined : Number.parseFloat(e.min);
+    dto.max = e.max === undefined ? undefined : Number.parseFloat(e.max);
+    dto.allowedValues = e.rangeList?.map(r => {
+      const nv = new NameValuePairDto();
+      nv.name = r.name;
+      nv.value = r.value;
+      return nv;
+    });
+    return dto;
+  }
+
+  private transformElementArray(e: ElementArrayData): ElementTemplateArrayDto {
+    const dto = new ElementTemplateArrayDto();
+    dto.name = e.name;
+    dto.isReadOnly = e.isReadOnly;
+    dto.description = e.description;
+    dto.group = e.group;
+    dto.subgroup = e.subgroup;
+    dto.length = e.length;
+    dto.lengthFormula = e.arrayLenFormulaStr;
+    dto.template = [this.transformSchema(e.template)];
+    dto.value = this.transformElements(e.value);
+    return dto;
+  }
+
+  private transformStruct(e: StructData): StructDto {
+    const dto = new StructDto();
+    dto.name = e.name;
+    dto.isReadOnly = e.isReadOnly;
+    dto.description = e.description;
+    dto.group = e.group;
+    dto.subgroup = e.subgroup;
+    dto.structType = e.structureType;
+    dto.value = this.transformElements(e.value);
+    return dto;
+  }
+
+  private transformSchema(schema: ParsedElementSchema): ElementDto {
+    if (schema.type === 'CONFIG_ELEMENT') {
+      const dto = new ConfigElementDto();
+      dto.name = schema.name;
+      dto.value = schema.defaultValue ?? '';
+      dto.description = schema.description;
+      dto.group = schema.group;
+      dto.subgroup = schema.subgroup;
+      dto.isReadOnly = schema.isReadOnly;
+      dto.unit = schema.unit;
+      dto.displayType = schema.displayType as ConfigElementDto['displayType'];
+      dto.policy = schema.policy as ConfigElementDto['policy'];
+      dto.qFormat = schema.qFormat;
+      dto.precision = schema.precision;
+      dto.min =
+        schema.min === undefined ? undefined : Number.parseFloat(schema.min);
+      dto.max =
+        schema.max === undefined ? undefined : Number.parseFloat(schema.max);
+      dto.allowedValues = schema.rangeList?.map(r => {
+        const nv = new NameValuePairDto();
+        nv.name = r.name;
+        nv.value = r.value;
+        return nv;
+      });
+      return dto;
+    }
+    if (schema.type === 'ELEMENT_ARRAY') {
+      const dto = new ElementTemplateArrayDto();
+      dto.name = schema.name;
+      dto.isReadOnly = schema.isReadOnly;
+      dto.description = schema.description;
+      dto.group = schema.group;
+      dto.subgroup = schema.subgroup;
+      dto.length = schema.length;
+      dto.lengthFormula = schema.arrayLenFormulaStr;
+      dto.template = [this.transformSchema(schema.template)];
+      dto.value = [];
+      return dto;
+    }
+    const dto = new StructDto();
+    dto.name = schema.name;
+    dto.isReadOnly = schema.isReadOnly;
+    dto.description = schema.description;
+    dto.group = schema.group;
+    dto.subgroup = schema.subgroup;
+    dto.structType = schema.structureType;
+    dto.value = [];
+    return dto;
   }
 }

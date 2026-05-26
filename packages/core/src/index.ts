@@ -10,6 +10,9 @@ export * from './application/orchestration/cqrs/registries/command-handler-regis
 export * from './application/orchestration/cqrs/registries/query-handler-registry.js';
 export * from './application/orchestration/cqrs/exceptions/handler-not-found-exception.js';
 
+// Shared errors
+export * from './shared/errors/index.js';
+
 // Shared utilities and base classes
 export * from './application/shared/base-command.js';
 export * from './application/shared/base-query.js';
@@ -27,6 +30,7 @@ export * from './shared/types/operation-result.js';
 
 // Shared Change Types
 export * from './application/shared/change-vocabulary.js';
+export * from './application/shared/read-model-base.js';
 
 // Application services
 export * from './application/ports/persistence/query-services/query-services.js';
@@ -35,8 +39,18 @@ export * from './application/ports/persistence/query-services/module/query-model
 export * from './application/ports/persistence/query-services/usecase/usecase-query-service.js';
 export * from './application/ports/persistence/query-services/usecase/query-models/index.js';
 export * from './application/ports/persistence/query-services/project/project-query-service.js';
+export * from './application/services/spf-module/ckv/ckv-read-model.js';
+export * from './application/services/spf-module/ckv/ckv-query-service.js';
+export * from './application/services/spf-module/spf-module-query-service.js';
+export * from './application/services/spf-module-definition/parameter-definition/parameter-definition-read-model.js';
+export * from './application/services/spf-module-definition/parameter-definition/parameter-definition-query-service.js';
+export * from './application/services/spf-module-definition/spf-module-definition-query-service.js';
 
 // Use case designer
+export * from './application/usecase-designer/spf-module/get-cal-data/common/parsed-element-data.js';
+export * from './application/usecase-designer/spf-module/get-cal-data/ckv-calibration-read-model.js';
+export * from './application/usecase-designer/spf-module/get-cal-data/get-ckv-cal-data.query.js';
+export * from './application/usecase-designer/spf-module/get-cal-data/get-ckv-cal-data.handler.js';
 export * from './application/usecase-designer/index.js';
 export * from './application/usecase-designer/spf-module/create/create-module.command.js';
 export * from './application/usecase-designer/spf-module/create/create-module.handler.js';

@@ -2,12 +2,13 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause
  */
-
 import type {ModuleQueryService} from './module/module-query-service.js';
 import type {UseCaseQueryService} from './usecase/usecase-query-service.js';
 import type {ProjectQueryService} from './project/project-query-service.js';
 import type {ValidationQueryRepository} from '../repositories/validation/validation-query.repository.js';
 import type {BulkReadRepository} from '../repositories/bulk-read/bulk-read.repository.js';
+import type {SpfModuleQueryService} from '../../../services/spf-module/spf-module-query-service.js';
+import type {SpfModuleDefinitionQueryService} from '../../../services/spf-module-definition/spf-module-definition-query-service.js';
 
 export interface QueryServices {
   readonly modulesQueryService: ModuleQueryService;
@@ -16,4 +17,6 @@ export interface QueryServices {
   readonly validationQueryService: ValidationQueryRepository;
   /** Repository for reading all entities needed for file download. */
   readonly bulkReadRepository: BulkReadRepository;
+  readonly spfModuleQueryService: SpfModuleQueryService;
+  readonly spfModuleDefinitionQueryService: SpfModuleDefinitionQueryService;
 }
