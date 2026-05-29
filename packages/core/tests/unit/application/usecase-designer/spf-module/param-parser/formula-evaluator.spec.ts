@@ -96,7 +96,7 @@ describe('FormulaEvaluator', () => {
   });
 
   describe('built-in constants', () => {
-    it('resolves e (Euler\'s number)', () => {
+    it("resolves e (Euler's number)", () => {
       expect(evaluate('e')).toBeCloseTo(Math.E);
     });
 

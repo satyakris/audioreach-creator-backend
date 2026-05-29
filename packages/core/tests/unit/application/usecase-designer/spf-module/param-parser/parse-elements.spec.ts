@@ -15,7 +15,12 @@ describe('parseParameterData', () => {
     it('parses UInt32 scalar', () => {
       const payload = new Uint8Array([0x05, 0x00, 0x00, 0x00]);
       const structure = JSON.stringify([
-        {elementType: 'ConfigElement', name: 'gain', dataType: 'UInt32', isReadOnly: false},
+        {
+          elementType: 'ConfigElement',
+          name: 'gain',
+          dataType: 'UInt32',
+          isReadOnly: false,
+        },
       ]);
       const result = parseParameterData(payload, structure);
       expect(result).toHaveLength(1);
@@ -30,7 +35,12 @@ describe('parseParameterData', () => {
     it('parses Int16 negative value', () => {
       const payload = new Uint8Array([0xff, 0xff]); // -1 as little-endian Int16
       const structure = JSON.stringify([
-        {elementType: 'ConfigElement', name: 'offset', dataType: 'Int16', isReadOnly: false},
+        {
+          elementType: 'ConfigElement',
+          name: 'offset',
+          dataType: 'Int16',
+          isReadOnly: false,
+        },
       ]);
       const result = parseParameterData(payload, structure);
       expect(result[0]).toMatchObject({
@@ -45,30 +55,55 @@ describe('parseParameterData', () => {
       new DataView(buf).setFloat32(0, 1.5, true);
       const payload = new Uint8Array(buf);
       const structure = JSON.stringify([
-        {elementType: 'ConfigElement', name: 'freq', dataType: 'Float', isReadOnly: false},
+        {
+          elementType: 'ConfigElement',
+          name: 'freq',
+          dataType: 'Float',
+          isReadOnly: false,
+        },
       ]);
       const result = parseParameterData(payload, structure);
       expect(result[0].type).toBe(PARAMETER_ELEMENT_TYPE.ConfigElement);
-      expect(parseFloat((result[0] as ConfigElementData).value)).toBeCloseTo(1.5);
+      expect(parseFloat((result[0] as ConfigElementData).value)).toBeCloseTo(
+        1.5,
+      );
     });
 
     it('parses RawData', () => {
       const payload = new Uint8Array([0x01, 0x02, 0x03]);
       const structure = JSON.stringify([
-        {elementType: 'ConfigElement', name: 'raw', dataType: 'RawData', isReadOnly: false},
+        {
+          elementType: 'ConfigElement',
+          name: 'raw',
+          dataType: 'RawData',
+          isReadOnly: false,
+        },
       ]);
       const result = parseParameterData(payload, structure);
-      expect(result[0]).toMatchObject({type: PARAMETER_ELEMENT_TYPE.ConfigElement, name: 'raw'});
+      expect(result[0]).toMatchObject({
+        type: PARAMETER_ELEMENT_TYPE.ConfigElement,
+        name: 'raw',
+      });
     });
 
     it('generates name for template element with no name', () => {
-      const payload = new Uint8Array([0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]);
+      const payload = new Uint8Array([
+        0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+      ]);
       const structure = JSON.stringify([
         {
           elementType: 'ElementArray',
           name: 'filter_coeffs',
           arrayLength: 2,
-          template: {elements: [{elementType: 'ConfigElement', dataType: 'UInt32', isReadOnly: false}]},
+          template: {
+            elements: [
+              {
+                elementType: 'ConfigElement',
+                dataType: 'UInt32',
+                isReadOnly: false,
+              },
+            ],
+          },
         },
       ]);
       const result = parseParameterData(payload, structure);
@@ -81,7 +116,9 @@ describe('parseParameterData', () => {
 
   describe(PARAMETER_ELEMENT_TYPE.Struct, () => {
     it('parses flat struct with two children', () => {
-      const payload = new Uint8Array([0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]);
+      const payload = new Uint8Array([
+        0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+      ]);
       const structure = JSON.stringify([
         {
           elementType: PARAMETER_ELEMENT_TYPE.Struct,
@@ -89,13 +126,26 @@ describe('parseParameterData', () => {
           isReadOnly: false,
           structureType: 'filter_t',
           elements: [
-            {elementType: 'ConfigElement', name: 'freq', dataType: 'UInt32', isReadOnly: false},
-            {elementType: 'ConfigElement', name: 'gain', dataType: 'UInt32', isReadOnly: false},
+            {
+              elementType: 'ConfigElement',
+              name: 'freq',
+              dataType: 'UInt32',
+              isReadOnly: false,
+            },
+            {
+              elementType: 'ConfigElement',
+              name: 'gain',
+              dataType: 'UInt32',
+              isReadOnly: false,
+            },
           ],
         },
       ]);
       const result = parseParameterData(payload, structure);
-      expect(result[0]).toMatchObject({type: PARAMETER_ELEMENT_TYPE.Struct, name: 'filter'});
+      expect(result[0]).toMatchObject({
+        type: PARAMETER_ELEMENT_TYPE.Struct,
+        name: 'filter',
+      });
       const s = result[0] as StructData;
       expect(s.value).toHaveLength(2);
       expect(s.value[0]).toMatchObject({
@@ -120,7 +170,12 @@ describe('parseParameterData', () => {
               isReadOnly: false,
               structureType: 'inner_t',
               elements: [
-                {elementType: 'ConfigElement', name: 'val', dataType: 'UInt32', isReadOnly: false},
+                {
+                  elementType: 'ConfigElement',
+                  name: 'val',
+                  dataType: 'UInt32',
+                  isReadOnly: false,
+                },
               ],
             },
           ],
@@ -142,11 +197,24 @@ describe('parseParameterData', () => {
           elementType: 'ElementArray',
           name: 'coeff',
           arrayLength: 3,
-          template: {elements: [{elementType: 'ConfigElement', name: 'coeff', dataType: 'UInt16', isReadOnly: false}]},
+          template: {
+            elements: [
+              {
+                elementType: 'ConfigElement',
+                name: 'coeff',
+                dataType: 'UInt16',
+                isReadOnly: false,
+              },
+            ],
+          },
         },
       ]);
       const result = parseParameterData(payload, structure);
-      expect(result[0]).toMatchObject({type: PARAMETER_ELEMENT_TYPE.ElementArray, name: 'coeff', length: 3});
+      expect(result[0]).toMatchObject({
+        type: PARAMETER_ELEMENT_TYPE.ElementArray,
+        name: 'coeff',
+        length: 3,
+      });
       const arr = result[0] as ElementArrayData;
       expect(arr.value).toHaveLength(3);
       expect((arr.value[0] as ConfigElementData).value).toBe('1');
@@ -166,7 +234,14 @@ describe('parseParameterData', () => {
                 name: 'band',
                 isReadOnly: false,
                 structureType: 'band_t',
-                elements: [{elementType: 'ConfigElement', name: 'val', dataType: 'UInt8', isReadOnly: false}],
+                elements: [
+                  {
+                    elementType: 'ConfigElement',
+                    name: 'val',
+                    dataType: 'UInt8',
+                    isReadOnly: false,
+                  },
+                ],
               },
             ],
           },
@@ -190,7 +265,16 @@ describe('parseParameterData', () => {
                 elementType: 'ElementArray',
                 name: 'inner',
                 arrayLength: 1,
-                template: {elements: [{elementType: 'ConfigElement', name: 'val', dataType: 'UInt16', isReadOnly: false}]},
+                template: {
+                  elements: [
+                    {
+                      elementType: 'ConfigElement',
+                      name: 'val',
+                      dataType: 'UInt16',
+                      isReadOnly: false,
+                    },
+                  ],
+                },
               },
             ],
           },
@@ -202,14 +286,30 @@ describe('parseParameterData', () => {
     });
 
     it('resolves formula-driven array length from previously parsed element', () => {
-      const payload = new Uint8Array([0x03, 0x00, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00]);
+      const payload = new Uint8Array([
+        0x03, 0x00, 0x01, 0x00, 0x02, 0x00, 0x03, 0x00,
+      ]);
       const structure = JSON.stringify([
-        {elementType: 'ConfigElement', name: 'count', dataType: 'UInt16', isReadOnly: false},
+        {
+          elementType: 'ConfigElement',
+          name: 'count',
+          dataType: 'UInt16',
+          isReadOnly: false,
+        },
         {
           elementType: 'ElementArray',
           name: 'data',
           arrayLenFormulaStr: 'count',
-          template: {elements: [{elementType: 'ConfigElement', name: 'data', dataType: 'UInt16', isReadOnly: false}]},
+          template: {
+            elements: [
+              {
+                elementType: 'ConfigElement',
+                name: 'data',
+                dataType: 'UInt16',
+                isReadOnly: false,
+              },
+            ],
+          },
         },
       ]);
       const result = parseParameterData(payload, structure);
@@ -223,7 +323,12 @@ describe('parseParameterData', () => {
     it('returns _raw on buffer overflow', () => {
       const payload = new Uint8Array([0x01, 0x00]); // only 2 bytes, needs 4
       const structure = JSON.stringify([
-        {elementType: 'ConfigElement', name: 'gain', dataType: 'UInt32', isReadOnly: false},
+        {
+          elementType: 'ConfigElement',
+          name: 'gain',
+          dataType: 'UInt32',
+          isReadOnly: false,
+        },
       ]);
       const result = parseParameterData(payload, structure);
       expect(result).toHaveLength(1);
@@ -249,7 +354,12 @@ describe('parseParameterData', () => {
     it('returns _raw on empty payload with non-empty schema', () => {
       const payload = new Uint8Array([]);
       const structure = JSON.stringify([
-        {elementType: 'ConfigElement', name: 'gain', dataType: 'UInt32', isReadOnly: false},
+        {
+          elementType: 'ConfigElement',
+          name: 'gain',
+          dataType: 'UInt32',
+          isReadOnly: false,
+        },
       ]);
       const result = parseParameterData(payload, structure);
       expect(result[0]).toMatchObject({

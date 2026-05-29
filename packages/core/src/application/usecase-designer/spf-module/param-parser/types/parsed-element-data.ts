@@ -55,7 +55,10 @@ export interface ElementArraySchema extends ParsedElementBase {
   policy?: string;
 }
 
-export type ElementSchema = ConfigElementSchema | StructSchema | ElementArraySchema;
+export type ElementSchema =
+  | ConfigElementSchema
+  | StructSchema
+  | ElementArraySchema;
 
 // ── Data types (value required — output of parseParameterData) ────────────────
 

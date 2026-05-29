@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 import type {ChangeInfo} from '../../../shared/change-vocabulary.js';
-import type {CkvReadModel} from '../../../services/spf-module/ckv/ckv-read-model.js';
+import type {CkvReadModel} from '../../../ports/persistence/query-services/spf-module/ckv/ckv-read-model.js';
 import type {ParsedElementData} from '../param-parser/types/parsed-element-data.js';
 
 export interface ParameterCalibrationReadModel {

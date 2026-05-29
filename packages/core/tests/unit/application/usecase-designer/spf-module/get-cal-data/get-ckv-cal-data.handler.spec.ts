@@ -113,7 +113,9 @@ describe('GetCkvCalibrationDataHandler', () => {
   it('throws when CKV is not found', async () => {
     const handler = new GetCkvCalibrationDataHandler(makeServices({ckv: null}));
     await expect(
-      handler.handle(new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id')),
+      handler.handle(
+        new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id'),
+      ),
     ).rejects.toThrow();
   });
 
@@ -144,7 +146,9 @@ describe('GetCkvCalibrationDataHandler', () => {
   it('throws ParameterDefinitionMissingError when payload exists but definition is missing', async () => {
     const handler = new GetCkvCalibrationDataHandler(makeServices({defs: []}));
     await expect(
-      handler.handle(new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id')),
+      handler.handle(
+        new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id'),
+      ),
     ).rejects.toThrow(ParameterDefinitionMissingError);
   });
 

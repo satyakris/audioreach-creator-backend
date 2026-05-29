@@ -26,7 +26,10 @@ export function evaluateFormula(
   function parseExpression(): number {
     let left = parseTerm();
     skipWhitespace();
-    while (pos < formula.length && (formula[pos] === '+' || formula[pos] === '-')) {
+    while (
+      pos < formula.length &&
+      (formula[pos] === '+' || formula[pos] === '-')
+    ) {
       const op = formula[pos++];
       skipWhitespace();
       const right = parseTerm();
@@ -40,7 +43,10 @@ export function evaluateFormula(
   function parseTerm(): number {
     let left = parseFactor();
     skipWhitespace();
-    while (pos < formula.length && (formula[pos] === '*' || formula[pos] === '/')) {
+    while (
+      pos < formula.length &&
+      (formula[pos] === '*' || formula[pos] === '/')
+    ) {
       const op = formula[pos++];
       skipWhitespace();
       const right = parseFactor();
@@ -60,7 +66,10 @@ export function evaluateFormula(
       return -parseFactor();
     }
 
-    if (pos < formula.length && (formula[pos] === '(' || formula[pos] === '[')) {
+    if (
+      pos < formula.length &&
+      (formula[pos] === '(' || formula[pos] === '[')
+    ) {
       const open = formula[pos];
       const close = open === '(' ? ')' : ']';
       pos++;
@@ -112,10 +121,14 @@ export function evaluateFormula(
       }
       pos++;
       switch (name) {
-        case 'log': return Math.log10(arg);
-        case 'ln':  return Math.log(arg);
-        case 'sqrt': return Math.sqrt(arg);
-        default: throw new Error(`Unknown function: ${name}`);
+        case 'log':
+          return Math.log10(arg);
+        case 'ln':
+          return Math.log(arg);
+        case 'sqrt':
+          return Math.sqrt(arg);
+        default:
+          throw new Error(`Unknown function: ${name}`);
       }
     }
 

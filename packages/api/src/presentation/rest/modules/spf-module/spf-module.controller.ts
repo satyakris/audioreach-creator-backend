@@ -36,17 +36,21 @@ import {
 } from './dto/request/spf-module-request.dto.js';
 import {ApiDocumentationWithExample} from '../../common/swagger-doc/swagger.decorator.js';
 import {ApiResult} from '../../common/dto/api-response/api-result.dto.js';
-import {QueryBus, GetCkvCalibrationDataQuery, EntityNotFoundError, InvalidParameterError, ParameterDefinitionMissingError} from '@arc/core';
-import type {
-  CkvCalibrationReadModel,
-  ParameterCalibrationReadModel,
-  ParsedElementData,
-  ElementSchema,
-  ConfigElementData,
-  ElementArrayData,
-  StructData,
+import {
+  QueryBus,
+  GetCkvCalibrationDataQuery,
+  EntityNotFoundError,
+  InvalidParameterError,
+  ParameterDefinitionMissingError,
+  PARAMETER_ELEMENT_TYPE,
+  type CkvCalibrationReadModel,
+  type ParameterCalibrationReadModel,
+  type ParsedElementData,
+  type ElementSchema,
+  type ConfigElementData,
+  type ElementArrayData,
+  type StructData,
 } from '@arc/core';
-import {PARAMETER_ELEMENT_TYPE} from '@arc/core';
 import type {ChangeInfoDto} from '../../common/dto/base.dto.js';
 import {NameValuePairDto} from '../../common/dto/element-data/elements/config-element/name-value-pair.dto.js';
 import {KeyValueDto, KeyDto, ValueDto} from '../../common/dto/key-value.dto.js';
@@ -317,7 +321,10 @@ export class SpfModuleController extends BaseController {
         throw new HttpException(error.message, HttpStatus.NOT_FOUND);
       }
       if (error instanceof ParameterDefinitionMissingError) {
-        throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+        throw new HttpException(
+          error.message,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
       throw new HttpException(
         'Failed to retrieve calibration data',
@@ -612,25 +619,6 @@ export class SpfModuleController extends BaseController {
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
-
-  /**
-   * Parses a string parameter as an integer, supporting both decimal and hex (0x) notation.
-   * Throws HTTP 400 if the value is not a valid integer.
-   */
-  private parseIntParam(value: string, paramName: string): number {
-    const trimmed = value.trim();
-    const num =
-      trimmed.startsWith('0x') || trimmed.startsWith('0X')
-        ? Number.parseInt(trimmed, 16)
-        : Number.parseInt(trimmed, 10);
-    if (Number.isNaN(num)) {
-      throw new HttpException(
-        `Invalid ${paramName}: "${value}" is not a valid integer or hex value`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    return num;
-  }
 
   private toChangeInfoDto(ci: {
     changeType: string;

@@ -170,27 +170,29 @@ packages/core/src/application/
 ├── shared/
 │   ├── change-vocabulary.ts                        (existing) # CHANGE_OPERATION, CHANGE_STATUS — ChangeInfo interface added here
 │   └── read-model-base.ts                          (new)      # ReadModelBase interface
-├── services/
-│   ├── query-services.ts                           (existing) # QueryServices interface — spfModuleQueryService + spfModuleDefinitionQueryService added
-│   ├── spf-module/
-│   │   ├── spf-module-query-service.ts              (new)      # SpfModuleQueryService interface
-│   │   └── ckv/
-│   │       ├── ckv-query-service.ts                 (new)      # CkvQueryService interface
-│   │       └── ckv-read-model.ts                    (new)      # CkvReadModel, ParameterPayloadReadModel, CkvKeyReadModel, CkvValueReadModel, CkvKeyValuePairReadModel
-│   ├── spf-module-definition/
-│   │   ├── spf-module-definition-query-service.ts   (new)      # SpfModuleDefinitionQueryService interface
-│   │   └── parameter-definition/
-│   │       ├── parameter-definition-query-service.ts (new)     # ParameterDefinitionQueryService interface
-│   │       └── parameter-definition-read-model.ts   (new)      # ParameterDefinitionReadModel interface
-│   └── project/
-│       └── project-query-service.ts                (existing) # Project service for projectId → fileSystemId resolution
+└── ports/persistence/query-services/
+    ├── query-services.ts                           (existing) # QueryServices interface — spfModuleQueryService + spfModuleDefinitionQueryService added
+    ├── module/                                     (existing) # ModuleQueryService
+    ├── usecase/                                    (existing) # UseCaseQueryService
+    ├── project/
+    │   └── project-query-service.ts               (existing) # Project service for projectId → fileSystemId resolution
+    ├── spf-module/
+    │   ├── spf-module-query-service.ts             (new)      # SpfModuleQueryService interface
+    │   └── ckv/
+    │       ├── ckv-query-service.ts                (new)      # CkvQueryService interface
+    │       └── ckv-read-model.ts                   (new)      # CkvReadModel, ParameterPayloadReadModel, CkvKeyReadModel, CkvValueReadModel, CkvKeyValuePairReadModel
+    └── spf-module-definition/
+        ├── spf-module-definition-query-service.ts  (new)      # SpfModuleDefinitionQueryService interface
+        └── parameter-definition/
+            ├── parameter-definition-query-service.ts (new)    # ParameterDefinitionQueryService interface
+            └── parameter-definition-read-model.ts   (new)     # ParameterDefinitionReadModel interface
 └── usecase-designer/
     └── spf-module/
         ├── get-cal-data/
         │   ├── get-ckv-cal-data.query.ts                (new) # GetCkvCalibrationDataQuery definition
         │   ├── get-ckv-cal-data.handler.ts              (new) # GetCkvCalibrationDataHandler
         │   └── ckv-calibration-read-model.ts            (new) # Merged application models (ParameterCalibrationReadModel, CkvCalibrationReadModel)
-        └── param-parser/
+        └── param-parser/                            # (all files below are new)
             ├── index.ts                                 (new) # Barrel export — re-exports all public symbols from types/ and parse-elements.ts
             ├── parse-elements.ts                        (new) # parseParameterData function — entry point for binary parameter parsing
             ├── types/
@@ -470,7 +472,7 @@ export interface ChangeInfo {
 
 **Query Services:**
 
-**File:** `packages/core/src/application/services/query-services.ts` (existing — two new services added)
+**File:** `packages/core/src/application/ports/persistence/query-services/query-services.ts` (existing — two new services added)
 
 ```typescript
 export interface QueryServices {
@@ -484,7 +486,7 @@ export interface QueryServices {
 }
 ```
 
-**File:** `packages/core/src/application/services/spf-module/spf-module-query-service.ts` (new)
+**File:** `packages/core/src/application/ports/persistence/query-services/spf-module/spf-module-query-service.ts` (new)
 
 ```typescript
 export interface SpfModuleQueryService {
@@ -494,7 +496,7 @@ export interface SpfModuleQueryService {
 }
 ```
 
-**File:** `packages/core/src/application/services/spf-module-definition/spf-module-definition-query-service.ts` (new)
+**File:** `packages/core/src/application/ports/persistence/query-services/spf-module-definition/spf-module-definition-query-service.ts` (new)
 
 ```typescript
 export interface SpfModuleDefinitionQueryService {
@@ -503,7 +505,7 @@ export interface SpfModuleDefinitionQueryService {
 }
 ```
 
-**File:** `packages/core/src/application/services/spf-module/ckv/ckv-query-service.ts` (new)
+**File:** `packages/core/src/application/ports/persistence/query-services/spf-module/ckv/ckv-query-service.ts` (new)
 
 ```typescript
 export interface CkvQueryService {
@@ -520,7 +522,7 @@ export interface CkvQueryService {
 }
 ```
 
-**File:** `packages/core/src/application/services/spf-module-definition/parameter-definition/parameter-definition-query-service.ts` (new)
+**File:** `packages/core/src/application/ports/persistence/query-services/spf-module-definition/parameter-definition/parameter-definition-query-service.ts` (new)
 
 ```typescript
 export interface ParameterDefinitionQueryService {
@@ -693,7 +695,7 @@ export interface ReadModelBase {
 
 #### 2.4 CKV Calibration Read Models
 
-**File:** `packages/core/src/application/services/spf-module/ckv/ckv-read-model.ts` (new)
+**File:** `packages/core/src/application/ports/persistence/query-services/spf-module/ckv/ckv-read-model.ts` (new)
 
 ```typescript
 // --- DB read models (inputs to handler, not returned to upper layer) ---
@@ -734,7 +736,7 @@ export interface KeyValuePairReadModel {
 }
 ```
 
-**File:** `packages/core/src/application/services/spf-module-definition/parameter-definition/parameter-definition-read-model.ts` (new)
+**File:** `packages/core/src/application/ports/persistence/query-services/spf-module-definition/parameter-definition/parameter-definition-read-model.ts` (new)
 
 ```typescript
 // Parameter definition row

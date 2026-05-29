@@ -39,12 +39,12 @@ export * from './application/ports/persistence/query-services/module/query-model
 export * from './application/ports/persistence/query-services/usecase/usecase-query-service.js';
 export * from './application/ports/persistence/query-services/usecase/query-models/index.js';
 export * from './application/ports/persistence/query-services/project/project-query-service.js';
-export * from './application/services/spf-module/ckv/ckv-read-model.js';
-export * from './application/services/spf-module/ckv/ckv-query-service.js';
-export * from './application/services/spf-module/spf-module-query-service.js';
-export * from './application/services/spf-module-definition/parameter-definition/parameter-definition-read-model.js';
-export * from './application/services/spf-module-definition/parameter-definition/parameter-definition-query-service.js';
-export * from './application/services/spf-module-definition/spf-module-definition-query-service.js';
+export * from './application/ports/persistence/query-services/spf-module/ckv/ckv-read-model.js';
+export * from './application/ports/persistence/query-services/spf-module/ckv/ckv-query-service.js';
+export * from './application/ports/persistence/query-services/spf-module/spf-module-query-service.js';
+export * from './application/ports/persistence/query-services/spf-module-definition/parameter-definition/parameter-definition-read-model.js';
+export * from './application/ports/persistence/query-services/spf-module-definition/parameter-definition/parameter-definition-query-service.js';
+export * from './application/ports/persistence/query-services/spf-module-definition/spf-module-definition-query-service.js';
 
 // Use case designer
 export * from './application/usecase-designer/spf-module/param-parser/index.js';

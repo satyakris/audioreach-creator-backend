@@ -193,9 +193,7 @@ function parseStruct(
 ): StructData {
   const children: ParsedElementData[] = [];
   for (const child of element.elements) {
-    children.push(
-      parseElement(child, reader, [...parsedSoFar, ...children]),
-    );
+    children.push(parseElement(child, reader, [...parsedSoFar, ...children]));
   }
   return {
     type: PARAMETER_ELEMENT_TYPE.Struct,
@@ -388,9 +386,7 @@ function parseTemplateItem(
   }
   const children: ParsedElementData[] = [];
   for (const child of templateElements) {
-    children.push(
-      parseElement(child, reader, [...parsedSoFar, ...children]),
-    );
+    children.push(parseElement(child, reader, [...parsedSoFar, ...children]));
   }
   return {
     type: PARAMETER_ELEMENT_TYPE.Struct,

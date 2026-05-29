@@ -56,7 +56,9 @@ describe('BinaryDataReader', () => {
     });
 
     it('throws on overflow', () => {
-      expect(() => makeReader(0x01, 0x02, 0x03).readUInt32()).toThrow('Buffer overflow');
+      expect(() => makeReader(0x01, 0x02, 0x03).readUInt32()).toThrow(
+        'Buffer overflow',
+      );
     });
   });
 
@@ -67,7 +69,9 @@ describe('BinaryDataReader', () => {
     });
 
     it('throws on overflow', () => {
-      expect(() => makeReader(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07).readUInt64()).toThrow('Buffer overflow');
+      expect(() =>
+        makeReader(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07).readUInt64(),
+      ).toThrow('Buffer overflow');
     });
   });
 
@@ -109,7 +113,9 @@ describe('BinaryDataReader', () => {
     });
 
     it('throws on overflow', () => {
-      expect(() => makeReader(0x01, 0x02, 0x03).readInt32()).toThrow('Buffer overflow');
+      expect(() => makeReader(0x01, 0x02, 0x03).readInt32()).toThrow(
+        'Buffer overflow',
+      );
     });
   });
 
@@ -120,7 +126,9 @@ describe('BinaryDataReader', () => {
     });
 
     it('throws on overflow', () => {
-      expect(() => makeReader(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07).readInt64()).toThrow('Buffer overflow');
+      expect(() =>
+        makeReader(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07).readInt64(),
+      ).toThrow('Buffer overflow');
     });
   });
 
@@ -131,7 +139,9 @@ describe('BinaryDataReader', () => {
     });
 
     it('throws on overflow', () => {
-      expect(() => makeReader(0x01, 0x02, 0x03).readFloat()).toThrow('Buffer overflow');
+      expect(() => makeReader(0x01, 0x02, 0x03).readFloat()).toThrow(
+        'Buffer overflow',
+      );
     });
   });
 
@@ -142,7 +152,9 @@ describe('BinaryDataReader', () => {
     });
 
     it('throws on overflow', () => {
-      expect(() => makeReader(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07).readDouble()).toThrow('Buffer overflow');
+      expect(() =>
+        makeReader(0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07).readDouble(),
+      ).toThrow('Buffer overflow');
     });
   });
 
@@ -160,7 +172,9 @@ describe('BinaryDataReader', () => {
     });
 
     it('throws on overflow', () => {
-      expect(() => makeReader(0x01, 0x02).readRawData(3)).toThrow('Buffer overflow');
+      expect(() => makeReader(0x01, 0x02).readRawData(3)).toThrow(
+        'Buffer overflow',
+      );
     });
   });
 
@@ -189,14 +203,14 @@ describe('BinaryDataReader', () => {
       const r = makeReader(0x01, 0x02, 0x03, 0x04);
       r.readUInt8(); // offset = 1
       r.readUInt8(); // offset = 2
-      r.align(2);   // already aligned to 2
+      r.align(2); // already aligned to 2
       expect(r.getRemainingBytes()).toBe(2);
     });
 
     it('advances offset to next alignment boundary', () => {
       const r = makeReader(0x01, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00);
       r.readUInt8(); // offset = 1
-      r.align(4);   // advance to offset 4
+      r.align(4); // advance to offset 4
       expect(r.getRemainingBytes()).toBe(4);
       expect(r.readUInt32()).toBe(5);
     });

@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 import type {QueryHandler} from '../../../orchestration/cqrs/queries/query-handler.js';
-import type {QueryServices} from '../../../services/query-services.js';
+import type {QueryServices} from '../../../ports/persistence/query-services/query-services.js';
 import type {GetCkvCalibrationDataQuery} from './get-ckv-cal-data.query.js';
 import type {
   CkvCalibrationReadModel,
   ParameterCalibrationReadModel,
 } from './ckv-calibration-read-model.js';
-import type {ParameterPayloadReadModel} from '../../../services/spf-module/ckv/ckv-read-model.js';
-import type {ParameterDefinitionReadModel} from '../../../services/spf-module-definition/parameter-definition/parameter-definition-read-model.js';
+import type {ParameterPayloadReadModel} from '../../../ports/persistence/query-services/spf-module/ckv/ckv-read-model.js';
+import type {ParameterDefinitionReadModel} from '../../../ports/persistence/query-services/spf-module-definition/parameter-definition/parameter-definition-read-model.js';
 import {parseParameterData} from '../param-parser/parse-elements.js';
 import type {ParsedElementData} from '../param-parser/types/parsed-element-data.js';
 import {EntityNotFoundError} from '../../../../shared/errors/entity-not-found.error.js';
