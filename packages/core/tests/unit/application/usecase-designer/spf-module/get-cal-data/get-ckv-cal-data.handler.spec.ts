@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 import {jest} from '@jest/globals';
 import {GetCkvCalibrationDataHandler} from '../../../../../../src/application/usecase-designer/spf-module/get-cal-data/get-ckv-cal-data.handler.js';
 import {GetCkvCalibrationDataQuery} from '../../../../../../src/application/usecase-designer/spf-module/get-cal-data/get-ckv-cal-data.query.js';

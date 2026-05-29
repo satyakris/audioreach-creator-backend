@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 /**
  * Evaluates an `arrayLenFormulaStr` expression and returns the numeric result.
  *
