@@ -4,9 +4,9 @@
  */
 import type {ChangeInfo} from '../../../shared/change-vocabulary.js';
 import type {CkvReadModel} from '../../../services/spf-module/ckv/ckv-read-model.js';
-import type {ParsedElementData} from './common/parsed-element-data.js';
+import type {ParsedElementData} from '../param-parser/types/parsed-element-data.js';
 
-export interface ParameterCalibrationDataModel {
+export interface ParameterCalibrationReadModel {
   parameterSystemId: number;
   changeInfo: ChangeInfo;
   parameterId: number;
@@ -18,7 +18,7 @@ export interface ParameterCalibrationDataModel {
   parsedData: ParsedElementData[] | null; // null when payload is null
 }
 
-export interface CkvCalibrationDataModel {
+export interface CkvCalibrationReadModel {
   ckv: CkvReadModel;
-  parameters: ParameterCalibrationDataModel[];
+  parameters: ParameterCalibrationReadModel[];
 }

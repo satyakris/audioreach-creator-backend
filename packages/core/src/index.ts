@@ -47,7 +47,7 @@ export * from './application/services/spf-module-definition/parameter-definition
 export * from './application/services/spf-module-definition/spf-module-definition-query-service.js';
 
 // Use case designer
-export * from './application/usecase-designer/spf-module/get-cal-data/common/parsed-element-data.js';
+export * from './application/usecase-designer/spf-module/param-parser/index.js';
 export * from './application/usecase-designer/spf-module/get-cal-data/ckv-calibration-read-model.js';
 export * from './application/usecase-designer/spf-module/get-cal-data/get-ckv-cal-data.query.js';
 export * from './application/usecase-designer/spf-module/get-cal-data/get-ckv-cal-data.handler.js';

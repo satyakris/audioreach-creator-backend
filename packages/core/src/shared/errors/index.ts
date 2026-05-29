@@ -4,3 +4,6 @@
  */
 
 export * from './error-codes.js';
+export * from './entity-not-found.error.js';
+export * from './invalid-parameter.error.js';
+export * from './parameter-definition-missing.error.js';

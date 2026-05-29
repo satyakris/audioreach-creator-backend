@@ -6,13 +6,15 @@ import type {QueryHandler} from '../../../orchestration/cqrs/queries/query-handl
 import type {QueryServices} from '../../../services/query-services.js';
 import type {GetCkvCalibrationDataQuery} from './get-ckv-cal-data.query.js';
 import type {
-  CkvCalibrationDataModel,
-  ParameterCalibrationDataModel,
+  CkvCalibrationReadModel,
+  ParameterCalibrationReadModel,
 } from './ckv-calibration-read-model.js';
-import type {ParameterCalibrationReadModel} from '../../../services/spf-module/ckv/ckv-read-model.js';
+import type {ParameterPayloadReadModel} from '../../../services/spf-module/ckv/ckv-read-model.js';
 import type {ParameterDefinitionReadModel} from '../../../services/spf-module-definition/parameter-definition/parameter-definition-read-model.js';
-import {ParameterDataParser} from './common/parameter-data-parser.js';
-import type {ParsedElementData} from './common/parsed-element-data.js';
+import {parseParameterData} from '../param-parser/parse-elements.js';
+import type {ParsedElementData} from '../param-parser/types/parsed-element-data.js';
+import {EntityNotFoundError} from '../../../../shared/errors/entity-not-found.error.js';
+import {ParameterDefinitionMissingError} from '../../../../shared/errors/parameter-definition-missing.error.js';
 
 /**
  * Handles `GetCkvCalibrationDataQuery` by fetching CKV data, parameter payloads,
@@ -28,13 +30,13 @@ import type {ParsedElementData} from './common/parsed-element-data.js';
  */
 export class GetCkvCalibrationDataHandler implements QueryHandler<
   GetCkvCalibrationDataQuery,
-  Promise<CkvCalibrationDataModel>
+  Promise<CkvCalibrationReadModel>
 > {
   constructor(private readonly queryServices: QueryServices) {}
 
   async handle(
     query: GetCkvCalibrationDataQuery,
-  ): Promise<CkvCalibrationDataModel> {
+  ): Promise<CkvCalibrationReadModel> {
     // Step 1: resolve file system ID from project ID
     const fileSystemId =
       await this.queryServices.projectQueryService.getFileIdByProjectId(
@@ -66,7 +68,7 @@ export class GetCkvCalibrationDataHandler implements QueryHandler<
     ]);
 
     if (!ckv) {
-      throw new Error(`CKV not found: systemId=${query.ckvSystemId}`);
+      throw new EntityNotFoundError('Ckv', query.ckvSystemId);
     }
 
     return {
@@ -79,26 +81,28 @@ export class GetCkvCalibrationDataHandler implements QueryHandler<
    * Joins payload rows to definition rows by `parameterSystemId → systemId`,
    * then parses each non-null payload with `ParameterDataParser`.
    *
-   * When no matching definition exists for a payload, safe defaults are used
-   * (`name: ''`, `parsedData: null`) so the response is never incomplete.
+   * Throws `ParameterDefinitionMissingError` when a payload is present but its
+   * definition is absent — a database integrity violation that must not be silently
+   * swallowed as a null result.
    */
   private buildParameterDataModels(
-    payloads: ParameterCalibrationReadModel[],
+    payloads: ParameterPayloadReadModel[],
     definitions: ParameterDefinitionReadModel[],
-  ): ParameterCalibrationDataModel[] {
+  ): ParameterCalibrationReadModel[] {
     // Index definitions by their PK (systemId) for O(1) lookup
     const defMap = new Map(definitions.map(d => [d.systemId, d]));
 
     return payloads.map(p => {
       const def = defMap.get(p.parameterSystemId);
 
-      let parsedData: ParsedElementData[] | null = null;
-      if (p.payload !== null && def !== undefined) {
-        parsedData = ParameterDataParser.parseParameterData(
-          p.payload,
-          def.paramStructure,
-        );
+      if (p.payload !== null && def === undefined) {
+        throw new ParameterDefinitionMissingError(p.parameterSystemId);
       }
+
+      const parsedData: ParsedElementData[] | null =
+        p.payload !== null && def !== undefined
+          ? parseParameterData(p.payload, def.paramStructure)
+          : null;
 
       return {
         parameterSystemId: p.systemId,
@@ -107,7 +111,7 @@ export class GetCkvCalibrationDataHandler implements QueryHandler<
         name: def?.name ?? '',
         description: def?.description,
         isReadOnly: def?.isReadOnly ?? false,
-        isHidden: undefined,
+        isHidden: undefined, // TODO: not present in ParameterDefinitionReadModel yet — add when DB schema exposes it
         pidType: def?.pidType ?? '',
         parsedData,
       };

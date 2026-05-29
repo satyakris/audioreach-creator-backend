@@ -6,7 +6,7 @@ import type {DataSource} from 'typeorm';
 import type {
   CkvQueryService,
   CkvReadModel,
-  ParameterCalibrationReadModel,
+  ParameterPayloadReadModel,
   CkvKeyValuePairReadModel,
   CkvKeyReadModel,
   CkvValueReadModel,
@@ -86,7 +86,7 @@ export class DbCkvCalibrationQueryService implements CkvQueryService {
     fileSystemId: number,
     ckvSystemId: number,
     paramSystemIds?: number[],
-  ): Promise<ParameterCalibrationReadModel[]> {
+  ): Promise<ParameterPayloadReadModel[]> {
     const session =
       await this.editActionsQueryService.findActiveSession(fileSystemId);
     if (!session) return this.queryCkvPayloads(ckvSystemId, paramSystemIds);
@@ -140,7 +140,7 @@ export class DbCkvCalibrationQueryService implements CkvQueryService {
   private async queryCkvPayloads(
     ckvSystemId: number,
     paramSystemIds?: number[],
-  ): Promise<ParameterCalibrationReadModel[]> {
+  ): Promise<ParameterPayloadReadModel[]> {
     const rows = await this.queryCkvPayloadsRaw(ckvSystemId, paramSystemIds);
     return rows.map(r => this.transformToParameterCalibrationReadModel(r));
   }
@@ -183,7 +183,7 @@ export class DbCkvCalibrationQueryService implements CkvQueryService {
   private transformToParameterCalibrationReadModel(
     row: CkvParameterPayloadRow,
     editAction?: EditActionRow,
-  ): ParameterCalibrationReadModel {
+  ): ParameterPayloadReadModel {
     return {
       systemId: row.systemId,
       changeInfo: editAction

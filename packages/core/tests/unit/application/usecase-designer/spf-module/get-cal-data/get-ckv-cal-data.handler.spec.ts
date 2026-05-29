@@ -4,10 +4,12 @@ import {GetCkvCalibrationDataQuery} from '../../../../../../src/application/usec
 import type {QueryServices} from '../../../../../../src/application/services/query-services.js';
 import type {
   CkvReadModel,
-  ParameterCalibrationReadModel,
+  ParameterPayloadReadModel,
 } from '../../../../../../src/application/services/spf-module/ckv/ckv-read-model.js';
 import type {ParameterDefinitionReadModel} from '../../../../../../src/application/services/spf-module-definition/parameter-definition/parameter-definition-read-model.js';
 import {CHANGE_OPERATION} from '../../../../../../src/application/shared/change-vocabulary.js';
+import {PARAMETER_ELEMENT_TYPE} from '../../../../../../src/application/usecase-designer/spf-module/param-parser/types/element-definition.js';
+import {ParameterDefinitionMissingError} from '../../../../../../src/shared/errors/parameter-definition-missing.error.js';
 
 const NONE = {changeType: CHANGE_OPERATION.None};
 
@@ -19,7 +21,7 @@ const mockCkv: CkvReadModel = {
   keyValuePairs: [],
 };
 
-const mockPayload: ParameterCalibrationReadModel = {
+const mockPayload: ParameterPayloadReadModel = {
   systemId: 20,
   changeInfo: NONE,
   parameterSystemId: 100,
@@ -39,7 +41,6 @@ const mockDef: ParameterDefinitionReadModel = {
       isReadOnly: false,
     },
   ]),
-  defaultData: new Uint8Array([0x00, 0x00, 0x00, 0x00]),
   isReadOnly: false,
   pidType: 'PARAM_ID_GAIN',
 };
@@ -49,7 +50,7 @@ function makeServices(
     fileId?: number;
     moduleDefId?: number;
     ckv?: CkvReadModel | null;
-    payloads?: ParameterCalibrationReadModel[];
+    payloads?: ParameterPayloadReadModel[];
     defs?: ParameterDefinitionReadModel[];
   } = {},
 ): QueryServices {
@@ -83,9 +84,9 @@ function makeServices(
 }
 
 describe('GetCkvCalibrationDataHandler', () => {
-  it('returns CkvCalibrationDataModel with parsed parameters', async () => {
+  it('returns CkvCalibrationReadModel with parsed parameters', async () => {
     const handler = new GetCkvCalibrationDataHandler(makeServices());
-    const query = new GetCkvCalibrationDataQuery(1, 2, 10, 'client-id');
+    const query = new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id');
     const result = await handler.handle(query);
 
     expect(result.ckv).toBe(mockCkv);
@@ -93,7 +94,7 @@ describe('GetCkvCalibrationDataHandler', () => {
     expect(result.parameters[0].name).toBe('gain');
     expect(result.parameters[0].parsedData).not.toBeNull();
     expect(result.parameters[0].parsedData![0]).toMatchObject({
-      type: 'CONFIG_ELEMENT',
+      type: PARAMETER_ELEMENT_TYPE.ConfigElement,
       name: 'gain',
       value: '5',
     });
@@ -104,7 +105,7 @@ describe('GetCkvCalibrationDataHandler', () => {
       makeServices({payloads: [{...mockPayload, payload: null}]}),
     );
     const result = await handler.handle(
-      new GetCkvCalibrationDataQuery(1, 2, 10, 'client-id'),
+      new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id'),
     );
     expect(result.parameters[0].parsedData).toBeNull();
   });
@@ -112,7 +113,7 @@ describe('GetCkvCalibrationDataHandler', () => {
   it('throws when CKV is not found', async () => {
     const handler = new GetCkvCalibrationDataHandler(makeServices({ckv: null}));
     await expect(
-      handler.handle(new GetCkvCalibrationDataQuery(1, 2, 10, 'client-id')),
+      handler.handle(new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id')),
     ).rejects.toThrow();
   });
 
@@ -132,7 +133,7 @@ describe('GetCkvCalibrationDataHandler', () => {
       }),
     );
     const result = await handler.handle(
-      new GetCkvCalibrationDataQuery(1, 2, 10, 'client-id'),
+      new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id'),
     );
     expect(result.parameters[0].changeInfo).toMatchObject({
       changeType: 'UPDATE',
@@ -140,19 +141,17 @@ describe('GetCkvCalibrationDataHandler', () => {
     });
   });
 
-  it('sets name to empty string when definition is missing', async () => {
+  it('throws ParameterDefinitionMissingError when payload exists but definition is missing', async () => {
     const handler = new GetCkvCalibrationDataHandler(makeServices({defs: []}));
-    const result = await handler.handle(
-      new GetCkvCalibrationDataQuery(1, 2, 10, 'client-id'),
-    );
-    expect(result.parameters[0].name).toBe('');
-    expect(result.parameters[0].parsedData).toBeNull();
+    await expect(
+      handler.handle(new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id')),
+    ).rejects.toThrow(ParameterDefinitionMissingError);
   });
 
   it('joins payloads to definitions by parameterSystemId → systemId', async () => {
     const handler = new GetCkvCalibrationDataHandler(makeServices());
     const result = await handler.handle(
-      new GetCkvCalibrationDataQuery(1, 2, 10, 'client-id'),
+      new GetCkvCalibrationDataQuery('1', '2', '10', 'client-id'),
     );
     // mockPayload.parameterSystemId = 100, mockDef.systemId = 100 → should match
     expect(result.parameters[0].parameterId).toBe(42);

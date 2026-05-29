@@ -4,7 +4,7 @@
  */
 import type {
   CkvReadModel,
-  ParameterCalibrationReadModel,
+  ParameterPayloadReadModel,
 } from './ckv-read-model.js';
 
 export interface CkvQueryService {
@@ -16,5 +16,5 @@ export interface CkvQueryService {
     fileSystemId: number,
     ckvSystemId: number,
     paramSystemIds?: number[],
-  ): Promise<ParameterCalibrationReadModel[]>;
+  ): Promise<ParameterPayloadReadModel[]>;
 }

@@ -2,19 +2,27 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause
  */
+import {PARAMETER_ELEMENT_TYPE} from './element-definition.js';
 
-interface ParsedElementBase {
+// ── Shared base fields present on every element variant ───────────────────────
+
+export interface ParsedElementBase {
   name: string;
   description?: string;
   group?: string;
   subgroup?: string;
   isReadOnly: boolean;
+  alignment?: number;
+  channel?: number;
+  groupSet?: number;
+  rtmPlotType?: string;
+  copySrc?: string;
 }
 
-// ── Schema types (no value — used in ElementArrayData.template) ──────────────
+// ── Schema types (no value — used in ElementArrayData.template) ───────────────
 
 export interface ConfigElementSchema extends ParsedElementBase {
-  type: 'CONFIG_ELEMENT';
+  type: typeof PARAMETER_ELEMENT_TYPE.ConfigElement;
   dataType: string;
   unit?: string;
   displayType?: string;
@@ -26,25 +34,28 @@ export interface ConfigElementSchema extends ParsedElementBase {
   max?: string;
   rangeList?: Array<{name: string; value: string}>;
   dependentOnElements?: Array<{name: string}>;
+  displayName?: string;
+  linkedByForFormula?: string[];
+  defaultDataDepends?: string[];
 }
 
 export interface StructSchema extends ParsedElementBase {
-  type: 'STRUCT';
-  structureType: string; // C type struct name (e.g. 'limiter_config_param_t') — may differ from element name (e.g. 'limiter')
-  children: ParsedElementSchema[];
+  type: typeof PARAMETER_ELEMENT_TYPE.Struct;
+  structureType: string;
+  children: ElementSchema[];
 }
 
 export interface ElementArraySchema extends ParsedElementBase {
-  type: 'ELEMENT_ARRAY';
-  template: ParsedElementSchema;
+  type: typeof PARAMETER_ELEMENT_TYPE.ElementArray;
+  template: ElementSchema;
   length?: number;
   arrayLenFormulaStr?: string;
+  copySrcInfoList?: string[];
+  displayType?: string;
+  policy?: string;
 }
 
-export type ParsedElementSchema =
-  | ConfigElementSchema
-  | StructSchema
-  | ElementArraySchema;
+export type ElementSchema = ConfigElementSchema | StructSchema | ElementArraySchema;
 
 // ── Data types (value required — output of parseParameterData) ────────────────
 
@@ -53,17 +64,20 @@ export interface ConfigElementData extends ConfigElementSchema {
 }
 
 export interface StructData extends ParsedElementBase {
-  type: 'STRUCT';
-  structureType: string; // C type struct name (e.g. 'limiter_config_param_t') — may differ from element name (e.g. 'limiter')
+  type: typeof PARAMETER_ELEMENT_TYPE.Struct;
+  structureType: string;
   value: ParsedElementData[];
 }
 
 export interface ElementArrayData extends ParsedElementBase {
-  type: 'ELEMENT_ARRAY';
-  template: ParsedElementSchema;
+  type: typeof PARAMETER_ELEMENT_TYPE.ElementArray;
+  template: ElementSchema;
   value: ParsedElementData[];
   length: number;
   arrayLenFormulaStr?: string;
+  copySrcInfoList?: string[];
+  displayType?: string;
+  policy?: string;
 }
 
 export type ParsedElementData =

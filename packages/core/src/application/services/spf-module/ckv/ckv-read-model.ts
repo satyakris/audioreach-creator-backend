@@ -10,7 +10,7 @@ export interface CkvReadModel extends ReadModelBase {
   keyValuePairs: CkvKeyValuePairReadModel[];
 }
 
-export interface ParameterCalibrationReadModel extends ReadModelBase {
+export interface ParameterPayloadReadModel extends ReadModelBase {
   parameterSystemId: number; // FK to SpfModuleParameterDefinition.systemId
   payload: Uint8Array | null;
 }

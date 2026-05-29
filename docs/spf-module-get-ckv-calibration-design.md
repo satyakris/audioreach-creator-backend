@@ -19,10 +19,10 @@
     - [2.3 Read Model Base](#23-read-model-base)
     - [2.4 CKV Calibration Read Models](#24-ckv-calibration-read-models)
     - [2.5 Binary Parameter Parser](#25-binary-parameter-parser)
-      - [2.5.1 Class Interface](#251-class-interface)
-      - [2.5.2 Zod Schema Design](#252-zod-schema-design)
-      - [2.5.3 Output Type: ParsedElementData Discriminated Union](#253-output-type-parsedelementdata-discriminated-union)
-      - [2.5.4 Binary Data Reader](#254-binary-data-reader)
+      - [2.5.1 Function Interface](#251-function-interface)
+      - [2.5.2 Output Type: ParsedElementData Discriminated Union](#252-output-type-parsedelementdata-discriminated-union)
+      - [2.5.3 Binary Data Reader](#253-binary-data-reader)
+      - [2.5.4 Formula Evaluator](#254-formula-evaluator)
   - [3. Infrastructure Layer (Database & Session Management)](#3-infrastructure-layer-database--session-management)
     - [3.1 Database Schema Relationships](#31-database-schema-relationships)
     - [3.2 DbCkvCalibrationQueryService — Service Design](#32-dbckvcalibrationqueryservice--service-design)
@@ -64,11 +64,11 @@ graph TD
             SpfModuleSvc[SpfModuleQueryService<br/>-> CkvQueryService]
             SpfModuleDefSvc[SpfModuleDefinitionQueryService<br/>-> ParameterDefinitionQueryService]
             CkvReadModel[CkvReadModel]
-            ParamCalReadModel[ParameterCalibrationReadModel]
+            ParamCalReadModel[ParameterPayloadReadModel]
             ParamDefReadModel[ParameterDefinitionReadModel]
             ParameterDataParser[ParameterDataParser<br/>Binary → ParsedElementData]
-            ParamCalDataModel[ParameterCalibrationDataModel]
-            CkvCalModel[CkvCalibrationDataModel]
+            ParamCalDataModel[ParameterCalibrationReadModel]
+            CkvCalModel[CkvCalibrationReadModel]
 
             QueryBus --> GetModCalDataQuery
             GetModCalDataQuery --> GetModCalDataHandler
@@ -176,7 +176,7 @@ packages/core/src/application/
 │   │   ├── spf-module-query-service.ts              (new)      # SpfModuleQueryService interface
 │   │   └── ckv/
 │   │       ├── ckv-query-service.ts                 (new)      # CkvQueryService interface
-│   │       └── ckv-read-model.ts                    (new)      # CkvReadModel, ParameterCalibrationReadModel, KeyReadModel, ValueReadModel, KeyValuePairReadModel
+│   │       └── ckv-read-model.ts                    (new)      # CkvReadModel, ParameterPayloadReadModel, CkvKeyReadModel, CkvValueReadModel, CkvKeyValuePairReadModel
 │   ├── spf-module-definition/
 │   │   ├── spf-module-definition-query-service.ts   (new)      # SpfModuleDefinitionQueryService interface
 │   │   └── parameter-definition/
@@ -186,14 +186,19 @@ packages/core/src/application/
 │       └── project-query-service.ts                (existing) # Project service for projectId → fileSystemId resolution
 └── usecase-designer/
     └── spf-module/
-        └── get-cal-data/
-            ├── get-ckv-cal-data.query.ts                (new) # GetCkvCalibrationDataQuery definition
-            ├── get-ckv-cal-data.handler.ts              (new) # GetCkvCalibrationDataHandler
-            ├── ckv-calibration-read-model.ts            (new) # Merged application models (ParameterCalibrationDataModel, CkvCalibrationDataModel)
-            └── common/
-                ├── parsed-element-data.ts               (new) # ParsedElementData interface (shared output type)
-                ├── param-structure.schema.ts            (new) # Zod schemas for definition element variants (ConfigElementZodSchema, StructZodSchema, ElementArrayZodSchema)
-                └── parameter-data-parser.ts             (new) # Binary parameter parser with BinaryDataReader
+        ├── get-cal-data/
+        │   ├── get-ckv-cal-data.query.ts                (new) # GetCkvCalibrationDataQuery definition
+        │   ├── get-ckv-cal-data.handler.ts              (new) # GetCkvCalibrationDataHandler
+        │   └── ckv-calibration-read-model.ts            (new) # Merged application models (ParameterCalibrationReadModel, CkvCalibrationReadModel)
+        └── param-parser/
+            ├── index.ts                                 (new) # Barrel export — re-exports all public symbols from types/ and parse-elements.ts
+            ├── parse-elements.ts                        (new) # parseParameterData function — entry point for binary parameter parsing
+            ├── types/
+            │   ├── element-definition.ts                (new) # PARAMETER_ELEMENT_TYPE, ParameterElementType, ConfigElement, StructElement, ElementArray, DefinitionElement
+            │   └── parsed-element-data.ts               (new) # ParsedElementBase + ParsedElementData discriminated union (schema + data types)
+            └── utils/
+                ├── binary-data-reader.ts                (new) # BinaryDataReader — sequential DataView-based binary reader
+                └── formular-evaluator.ts                (new) # evaluateFormula — recursive descent expression evaluator for arrayLenFormulaStr
 ```
 
 ### Infrastructure Layer Files
@@ -226,23 +231,23 @@ packages/infrastructure/persistence/src/persistence-typeorm-sqllite/
 1. `spf-module.controller.ts` → Validates HTTP request, dispatches `GetCkvCalibrationDataQuery`
 2. `query-bus.ts` → Routes query to `GetCkvCalibrationDataHandler`
 3. `get-ckv-cal-data.handler.ts` → Orchestrates the workflow (resolves IDs, parallel fetch, merge, parse)
-4. `db-ckv-calibration-query-service.ts` → Fetches `CkvReadModel` and `ParameterCalibrationReadModel[]` with session overlay
+4. `db-ckv-calibration-query-service.ts` → Fetches `CkvReadModel` and `ParameterPayloadReadModel[]` with session overlay
 5. `db-parameter-definition-query-service.ts` → Fetches `ParameterDefinitionReadModel[]`
-6. `parameter-data-parser.ts` → Decodes binary payload → `ParsedElementData[]`
+6. `parse-elements.ts` (`parseParameterData`) → Decodes binary payload → `ParsedElementData[]`
 
 **Data Flow:**
 1. `CkvQueryService.getCkv()` → `CkvReadModel` (Infrastructure → Core)
-2. `CkvQueryService.getCkvPayloads()` → `ParameterCalibrationReadModel[]` (Infrastructure → Core)
+2. `CkvQueryService.getCkvPayloads()` → `ParameterPayloadReadModel[]` (Infrastructure → Core)
 3. `ParameterDefinitionQueryService.getParameterDefinitions()` → `ParameterDefinitionReadModel[]` (Infrastructure → Core)
-4. `ParameterDataParser.parseParameterData()` → `ParsedElementData[]` (binary decode)
-5. `buildParameterDataModels()` → `ParameterCalibrationDataModel[]` (merge + parse)
-6. `GetCkvCalibrationDataHandler` → `CkvCalibrationDataModel` (final output, Core → Presentation)
+4. `parseParameterData()` → `ParsedElementData[]` (binary decode)
+5. `buildParameterDataModels()` → `ParameterCalibrationReadModel[]` (merge + parse)
+6. `GetCkvCalibrationDataHandler` → `CkvCalibrationReadModel` (final output, Core → Presentation)
 7. Controller → `SpfModuleCalDataResponseDto` (DTO transformation, Presentation)
 
 **Session Management:**
 - `edit-actions-query-service.ts` → Manages active editing sessions
 - `overlay-merge.ts` → Merges pending changes with base data at read time
-- `CkvReadModel` and `ParameterCalibrationReadModel[]` are both subject to session overlay
+- `CkvReadModel` and `ParameterPayloadReadModel[]` are both subject to session overlay
 
 ## End-to-End Workflow
 
@@ -254,11 +259,11 @@ The SPF Module Get Calibration Data endpoint follows a structured workflow orche
 2. **Project & Module Resolution**: The handler resolves `projectId` → `fileSystemId` (via `ProjectQueryService`) and `spfModuleSystemId` → `moduleDefSystemId` (via `SpfModuleQueryService`).
 3. **Parallel Data Fetch**: Three reads are issued concurrently:
    - `CkvQueryService.getCkv()` → `CkvReadModel` (CKV row with key-value pairs and `uiPersistence`)
-   - `CkvQueryService.getCkvPayloads()` → `ParameterCalibrationReadModel[]` (one row per parameter: binary payload)
+   - `CkvQueryService.getCkvPayloads()` → `ParameterPayloadReadModel[]` (one row per parameter: binary payload)
    - `ParameterDefinitionQueryService.getParameterDefinitions()` → `ParameterDefinitionReadModel[]` (one row per parameter: schema metadata)
-4. **Binary Parsing & Merge**: `buildParameterDataModels()` joins `ParameterCalibrationReadModel[]` with `ParameterDefinitionReadModel[]` on `parameterSystemId` → `systemId`, decodes each binary payload via `ParameterDataParser.parseParameterData()`, and produces `ParameterCalibrationDataModel[]`.
-5. **Output Assembly**: The handler wraps `CkvReadModel` + `ParameterCalibrationDataModel[]` into `CkvCalibrationDataModel` and returns it to the controller.
-6. **Response Transformation**: The controller transforms `CkvCalibrationDataModel` into `SpfModuleCalDataResponseDto` (mapping `ParsedElementData[]` → element DTOs) and returns HTTP 200.
+4. **Binary Parsing & Merge**: `buildParameterDataModels()` joins `ParameterPayloadReadModel[]` with `ParameterDefinitionReadModel[]` on `parameterSystemId` → `systemId`, decodes each binary payload via `parseParameterData()`, and produces `ParameterCalibrationReadModel[]`.
+5. **Output Assembly**: The handler wraps `CkvReadModel` + `ParameterCalibrationReadModel[]` into `CkvCalibrationReadModel` and returns it to the controller.
+6. **Response Transformation**: The controller transforms `CkvCalibrationReadModel` into `SpfModuleCalDataResponseDto` (mapping `ParsedElementData[]` → element DTOs) and returns HTTP 200.
 
 All three data reads in step 3 go through the Infrastructure Layer with session-aware overlay support:
 - **Read-Only Mode**: Direct database queries when no active editing session exists
@@ -323,7 +328,7 @@ sequenceDiagram
         end
         DbCkvSvc-->>SpfModuleSvc: CkvReadModel
         SpfModuleSvc-->>Handler: CkvReadModel
-    and getCkvPayloads → ParameterCalibrationReadModel[]
+    and getCkvPayloads → ParameterPayloadReadModel[]
         Handler->>SpfModuleSvc: ckvQueryService.getCkvPayloads(fileSystemId, ckvSystemId, paramSystemIds)
         SpfModuleSvc->>DbCkvSvc: Delegate to infrastructure
         DbCkvSvc->>EditActionsSvc: findActiveSession(fileSystemId)
@@ -333,10 +338,10 @@ sequenceDiagram
         else Session with Changes
             DbCkvSvc->>Database: Query CkvParameterPayload rows
             DbCkvSvc->>OverlayEngine: applyToCollection(payloads, editActions)
-            OverlayEngine-->>DbCkvSvc: Overlaid ParameterCalibrationReadModel[]
+            OverlayEngine-->>DbCkvSvc: Overlaid ParameterPayloadReadModel[]
         end
-        DbCkvSvc-->>SpfModuleSvc: ParameterCalibrationReadModel[]
-        SpfModuleSvc-->>Handler: ParameterCalibrationReadModel[]
+        DbCkvSvc-->>SpfModuleSvc: ParameterPayloadReadModel[]
+        SpfModuleSvc-->>Handler: ParameterPayloadReadModel[]
     and getParameterDefinitions → ParameterDefinitionReadModel[]
         Handler->>ParamDefSvc: getParameterDefinitions(fileSystemId, moduleDefSystemId, paramSystemIds)
         ParamDefSvc->>DbParamDefSvc: Delegate to infrastructure
@@ -353,20 +358,20 @@ sequenceDiagram
         ParamDefSvc-->>Handler: ParameterDefinitionReadModel[]
     end
 
-    Note over Handler: Step 4 — buildParameterDataModels()<br/>Join ParameterCalibrationReadModel[] + ParameterDefinitionReadModel[] on parameterSystemId → systemId
-    loop For each ParameterCalibrationReadModel
+    Note over Handler: Step 4 — buildParameterDataModels()<br/>Join ParameterPayloadReadModel[] + ParameterDefinitionReadModel[] on parameterSystemId → systemId
+    loop For each ParameterPayloadReadModel
         Handler->>ParamParser: parseParameterData(payload, paramStructure ?? '')
         ParamParser-->>Handler: ParsedElementData[] or null if payload is null
-        Handler->>Handler: Build ParameterCalibrationDataModel
+        Handler->>Handler: Build ParameterCalibrationReadModel
     end
 
-    Note over Handler: Step 5 — Assemble CkvCalibrationDataModel
-    Handler->>Handler: {ckv: CkvReadModel, parameters: ParameterCalibrationDataModel[]}
-    Handler-->>QueryBus: CkvCalibrationDataModel
-    QueryBus-->>Controller: CkvCalibrationDataModel
+    Note over Handler: Step 5 — Assemble CkvCalibrationReadModel
+    Handler->>Handler: {ckv: CkvReadModel, parameters: ParameterCalibrationReadModel[]}
+    Handler-->>QueryBus: CkvCalibrationReadModel
+    QueryBus-->>Controller: CkvCalibrationReadModel
 
     Note over Controller: Step 6 — Transform to response DTO
-    Controller->>Controller: Transform CkvCalibrationDataModel<br/>→ SpfModuleCalDataResponseDto
+    Controller->>Controller: Transform CkvCalibrationReadModel<br/>→ SpfModuleCalDataResponseDto
     Controller-->>Client: HTTP 200 + Calibration Data JSON
 ```
 
@@ -397,32 +402,31 @@ async getCalibrationData(
 ```
 
 #### Parameter Processing:
-- **Path Parameters:** projectId, spfModuleSystemId, ckvSystemId
-- **Query Parameters:** param-system-ids (optional, comma-separated)
-- **Parsing:** Supports both decimal and hexadecimal formats with 0x/0X prefix detection
-- **Validation:** Type conversion with descriptive error handling for invalid formats
-- **Error Handling:** Specific HTTP status codes for different failure scenarios
+- **Path Parameters:** projectId, spfModuleSystemId, ckvSystemId — passed as raw strings directly to `GetCkvCalibrationDataQuery`
+- **Query Parameters:** param-system-ids (optional, comma-separated string) — passed as-is to `GetCkvCalibrationDataQuery`
+- **Parsing & Validation:** Performed inside `GetCkvCalibrationDataQuery` constructor via a file-private `parseId()` helper. Supports decimal and `0x`/`0X` hexadecimal notation. Throws `InvalidParameterError` (ERR_1004) if any value is invalid.
+- **Error Handling:** Controller catches `InvalidParameterError` → HTTP 400; `EntityNotFoundError` → HTTP 404; `ParameterDefinitionMissingError` → HTTP 500; generic fallback → HTTP 422
 
 #### DTO Transformation Logic:
 ```typescript
 private transformToCalibrationDataDto(
-  model: CkvCalibrationDataModel,
+  model: CkvCalibrationReadModel,
 ): SpfModuleCalDataResponseDto {
   // Transform CkvReadModel → CKV DTO (keyValuePairs, uiPersistence, changeInfo)
-  // Transform ParameterCalibrationDataModel[] → ParameterDetailDto[]
+  // Transform ParameterCalibrationReadModel[] → ParameterDetailDto[]
   //   For each parameter, transform ParsedElementData[] → element DTOs:
-  //     CONFIG_ELEMENT  → ConfigElementDto  (value, dataType, ranges, etc.)
-  //     ELEMENT_ARRAY   → ElementArrayDto   (template, length, lengthFormula, value[])
-  //     STRUCT          → StructDto         (children recursively transformed)
+  //     PARAMETER_ELEMENT_TYPE.ConfigElement  → ConfigElementDto  (value, dataType, ranges, etc.)
+  //     PARAMETER_ELEMENT_TYPE.ElementArray   → ElementArrayDto   (template, length, lengthFormula, value[])
+  //     PARAMETER_ELEMENT_TYPE.Struct         → StructDto         (children recursively transformed)
   //   If parsedData is null → omit or return empty elements array
   //   If parsedData[0].name === '_raw' → surface as raw hex fallback element
 }
 ```
 
 #### Structured Element Transformation:
-- **`CONFIG_ELEMENT`:** Single scalar value — maps to `ConfigElementDto` with `value`, `dataType`, `min`, `max`, `unit`, etc.
-- **`ELEMENT_ARRAY`:** Fixed or dynamic-length array — maps to `ElementArrayDto` with `template`, `length`, `lengthFormula`, and `value[]` (parsed items)
-- **`STRUCT`:** Named group of child elements — maps to `StructDto` with recursively transformed children
+- **`PARAMETER_ELEMENT_TYPE.ConfigElement`:** Single scalar value — maps to `ConfigElementDto` with `value`, `dataType`, `min`, `max`, `unit`, etc.
+- **`PARAMETER_ELEMENT_TYPE.ElementArray`:** Fixed or dynamic-length array — maps to `ElementArrayDto` with `template`, `length`, `lengthFormula`, and `value[]` (parsed items)
+- **`PARAMETER_ELEMENT_TYPE.Struct`:** Named group of child elements — maps to `StructDto` with recursively transformed children
 - **Parse failure (`_raw`):** When `parsedData[0].name === '_raw'`, the controller surfaces the hex string as an opaque fallback element
 
 ### 2. Core Layer (Application & Domain)
@@ -512,7 +516,7 @@ export interface CkvQueryService {
     fileSystemId: number,
     ckvSystemId: number,
     paramSystemIds?: number[], //paramSystemIds is optional. If it is provided, should return payloads for these paramSystemIds under ckvSystemId. Otherwise, return all payloads under ckvSystemId.
-  ): Promise<ParameterCalibrationReadModel[]>;
+  ): Promise<ParameterPayloadReadModel[]>;
 }
 ```
 
@@ -531,13 +535,23 @@ export interface ParameterDefinitionQueryService {
 **File:** `packages/core/src/application/usecase-designer/spf-module/get-cal-data/get-ckv-cal-data.query.ts` (new)
 
 **Query Definition:**
+
+All ID parameters are accepted as raw strings and parsed to integers inside the constructor. A file-private `parseId()` helper (not exported) handles decimal and `0x`-prefixed hexadecimal notation. Throws `InvalidParameterError` (ERR_1004) on any invalid value — the controller catches this and maps it to HTTP 400.
+
 ```typescript
 export class GetCkvCalibrationDataQuery extends BaseQuery {
+  public readonly projectId: number;
+  public readonly spfModuleSystemId: number;
+  public readonly ckvSystemId: number;
+  public readonly paramSystemIds?: number[];
+
   constructor(
-    public readonly projectId: string,
-    public readonly spfModuleSystemId: number,
-    public readonly ckvSystemId: number,
-    public readonly paramSystemIds?: number[],
+    projectIdStr: string,
+    spfModuleSystemIdStr: string,
+    ckvSystemIdStr: string,
+    clientId: string,
+    /** Optional comma-separated list of parameter system IDs (decimal or hex). */
+    paramSystemIdsStr?: string,
   )
 }
 ```
@@ -546,22 +560,22 @@ export class GetCkvCalibrationDataQuery extends BaseQuery {
 
 **Query Handler: `GetCkvCalibrationDataHandler`**
 
-`GetCkvCalibrationDataHandler` handles exactly one query type (`GetCkvCalibrationDataQuery`). It is the orchestrator for the get-CKV-calibration-data use case. It resolves all required data in parallel, delegates binary parsing to `ParameterDataParser`, and returns a fully merged `CkvCalibrationDataModel` to the controller. It never touches the database directly — all data access goes through `QueryServices`.
+`GetCkvCalibrationDataHandler` handles exactly one query type (`GetCkvCalibrationDataQuery`). It is the orchestrator for the get-CKV-calibration-data use case. It resolves all required data in parallel, delegates binary parsing to `ParameterDataParser`, and returns a fully merged `CkvCalibrationReadModel` to the controller. It never touches the database directly — all data access goes through `QueryServices`.
 
 **Responsibilities:**
 - Resolve `projectId` → `fileSystemId` via `ProjectQueryService`
 - Resolve `spfModuleSystemId` → `moduleDefSystemId` via `SpfModuleQueryService`
 - Fetch CKV data, parameter payloads, and parameter definitions in parallel
-- Merge payloads + definitions into `ParameterCalibrationDataModel[]` via `buildParameterDataModels`
+- Merge payloads + definitions into `ParameterCalibrationReadModel[]` via `buildParameterDataModels`
 - Throw `EntityNotFoundError` if the CKV does not exist
 
 ```typescript
 export class GetCkvCalibrationDataHandler
-  implements QueryHandler<GetCkvCalibrationDataQuery, CkvCalibrationDataModel> {
+  implements QueryHandler<GetCkvCalibrationDataQuery, CkvCalibrationReadModel> {
 
   constructor(private readonly queryServices: QueryServices) {}
 
-  async handle(query: GetCkvCalibrationDataQuery): Promise<CkvCalibrationDataModel> {
+  async handle(query: GetCkvCalibrationDataQuery): Promise<CkvCalibrationReadModel> {
     // Step 1: Resolve projectId → fileSystemId (number)
     // Used to scope all subsequent DB queries to the correct file
     const fileSystemId = await this.queryServices.projectQueryService
@@ -575,7 +589,7 @@ export class GetCkvCalibrationDataHandler
     // Step 3: Fetch in parallel:
     //   ckv                 → CkvReadModel | null
     //                          (CKV row with uiPersistence + KeyValuePairReadModel[])
-    //   payloads            → ParameterCalibrationReadModel[]
+    //   payloads            → ParameterPayloadReadModel[]
     //                          (one row per parameter: parameterSystemId, payload)
     //   parameterDefinitions → ParameterDefinitionReadModel[]
     //                          (one row per parameter: name, paramStructure, defaultData, etc.)
@@ -588,24 +602,24 @@ export class GetCkvCalibrationDataHandler
 
     if (!ckv) throw new EntityNotFoundError('Ckv', query.ckvSystemId);
 
-    // Step 4: Merge payloads + definitions → ParameterCalibrationDataModel[]
-    //         and assemble the final CkvCalibrationDataModel
+    // Step 4: Merge payloads + definitions → ParameterCalibrationReadModel[]
+    //         and assemble the final CkvCalibrationReadModel
     return { ckv, parameters: this.buildParameterDataModels(payloads, parameterDefinitions) };
   }
 }
 ```
 
-> **Note:** `GetCkvCalibrationDataHandler` implements `QueryHandler<GetCkvCalibrationDataQuery, CkvCalibrationDataModel>` — one handler, one query type — and returns `CkvCalibrationDataModel` as the final merged output type (see section 2.4).
+> **Note:** `GetCkvCalibrationDataHandler` implements `QueryHandler<GetCkvCalibrationDataQuery, CkvCalibrationReadModel>` — one handler, one query type — and returns `CkvCalibrationReadModel` as the final merged output type (see section 2.4).
 
 **Merge & Parse: `buildParameterDataModels`**
 
-This private method is the merge point between the two DB read models and the binary parser. It joins `ParameterCalibrationReadModel[]` (calibration payloads) with `ParameterDefinitionReadModel[]` (schema metadata) on `parameterSystemId` → `systemId`, decodes each binary payload using `ParameterDataParser.parseParameterData()` (see **section 2.5 Binary Parameter Parser**), and returns `ParameterCalibrationDataModel[]`.
+This private method is the merge point between the two DB read models and the binary parser. It joins `ParameterPayloadReadModel[]` (payload rows) with `ParameterDefinitionReadModel[]` (schema metadata) on `parameterSystemId` → `systemId`, decodes each binary payload using `parseParameterData()` (see **section 2.5 Binary Parameter Parser**), and returns `ParameterCalibrationReadModel[]`.
 
 ```typescript
   private buildParameterDataModels(
-    payloads: ParameterCalibrationReadModel[],
+    payloads: ParameterPayloadReadModel[],
     definitions: ParameterDefinitionReadModel[],
-  ): ParameterCalibrationDataModel[] {
+  ): ParameterCalibrationReadModel[] {
     // Key the definition map by systemId (PK of SpfModuleParameterDefinition)
     // so it aligns with parameterSystemId (FK) on each payload row.
     const defMap = new Map(definitions.map(d => [d.systemId, d]));
@@ -613,15 +627,16 @@ This private method is the merge point between the two DB read models and the bi
     return payloads.map(p => {
       const def = defMap.get(p.parameterSystemId);
 
-      let parsedData: ParsedElementData[] | null = null;
-      if (p.payload !== null) {
-        // Payload exists — parse it using the definition's paramStructure.
-        // If def is missing, pass an empty string so parseParameterData returns the _raw fallback.
-        parsedData = ParameterDataParser.parseParameterData(
-          p.payload,
-          def?.paramStructure ?? '',
-        );
+      // A non-null payload without a definition is a FK integrity violation —
+      // surface it as an explicit error rather than silently returning null.
+      if (p.payload !== null && def === undefined) {
+        throw new ParameterDefinitionMissingError(p.parameterSystemId);
       }
+
+      const parsedData: ParsedElementData[] | null =
+        p.payload !== null && def !== undefined
+          ? parseParameterData(p.payload, def.paramStructure)
+          : null;
       // If p.payload is null → parsedData stays null (upper layer knows no payload is stored)
 
       return {
@@ -641,11 +656,12 @@ This private method is the merge point between the two DB read models and the bi
 
 **Design Notes:**
 1. **Join by `parameterSystemId`** — builds an O(1) lookup map from `definitions` keyed by `d.systemId` (PK of `SpfModuleParameterDefinition`), then looks up each payload by `p.parameterSystemId` (FK). This is the correct FK → PK join.
-2. **Payload check** — if `p.payload` is `null`, `parsedData` stays `null` and the upper layer knows no binary data is stored for this CKV parameter.
-3. **Binary parsing** — if `p.payload` is not null, calls `ParameterDataParser.parseParameterData(p.payload, def?.paramStructure ?? '')`. If `def` is missing, the empty `paramStructure` string causes `JSON.parse` to throw inside the parser, which returns the `_raw` fallback automatically.
-4. **Parse failure fallback** — `parseParameterData` handles all parse errors internally (malformed `paramStructure` JSON, buffer overflow, unknown element type) and always returns a valid `ParsedElementData[]`. On failure it returns `[{ type: 'CONFIG_ELEMENT', name: '_raw', isReadOnly: true, value: <hexString> }]`. The handler calls it without a try/catch and always receives a uniform array with no branching needed.
-5. **Output** — returns `ParameterCalibrationDataModel[]` combining definition metadata (`name`, `description`, `isReadOnly`, `isHidden`, `pidType`) with the decoded `parsedData`, ready for the controller to transform into response DTOs.
-6. **TODO (future) — PID policy validation** — Currently, PID policy for CKV does not exist in the database. In the future, a new table may be added to hold PID policy per CKV. Once that table exists, `GetCkvCalibrationDataHandler` should also query the PID policy for the CKV (in parallel with the existing three reads). Before calling `buildParameterDataModels`, the handler should validate the PID policy against the parameter payloads. If the PID policy does not match a parameter's payload, that parameter should still be included in the response but surfaced as a warning via `ApiResult.warnings` rather than silently dropped or treated as an error.
+2. **Payload absent (`null`)** — if `p.payload` is `null`, `parsedData` stays `null` and the upper layer knows no binary data is stored for this CKV parameter.
+3. **Payload present, definition missing** — `CkvParameterPayload.parameterSystemId` is a FK to `SpfModuleParameterDefinition`. A non-null payload without a matching definition is a database integrity violation. `buildParameterDataModels` throws `ParameterDefinitionMissingError(p.parameterSystemId)` (error code `ERR_4005`) rather than silently returning `null`, which would be indistinguishable from a legitimately absent payload. The controller catches this error and maps it to HTTP 500.
+4. **Binary parsing** — if `p.payload` is not null and `def` is present, calls `parseParameterData(p.payload, def.paramStructure)`.
+5. **Parse failure fallback** — `parseParameterData` handles all parse errors internally (malformed `paramStructure` JSON, buffer overflow, unknown element type) and always returns a valid `ParsedElementData[]`. On failure it returns `[{ type: 'ConfigElement', name: '_raw', isReadOnly: true, value: <hexString> }]`. The handler calls it without a try/catch and always receives a uniform array with no branching needed.
+6. **Output** — returns `ParameterCalibrationReadModel[]` combining definition metadata (`name`, `description`, `isReadOnly`, `isHidden`, `pidType`) with the decoded `parsedData`, ready for the controller to transform into response DTOs.
+7. **TODO (future) — PID policy validation** — Currently, PID policy for CKV does not exist in the database. In the future, a new table may be added to hold PID policy per CKV. Once that table exists, `GetCkvCalibrationDataHandler` should also query the PID policy for the CKV (in parallel with the existing three reads). Before calling `buildParameterDataModels`, the handler should validate the PID policy against the parameter payloads. If the PID policy does not match a parameter's payload, that parameter should still be included in the response but surfaced as a warning via `ApiResult.warnings` rather than silently dropped or treated as an error.
 
 #### 2.3 Read Model Base
 
@@ -691,7 +707,7 @@ export interface CkvReadModel extends ReadModelBase {
 }
 
 // Parameter payload row
-export interface ParameterCalibrationReadModel extends ReadModelBase {
+export interface ParameterPayloadReadModel extends ReadModelBase {
   // changeType: NONE | CREATE | UPDATE (UPDATE = binary payload changed)
   // parameterSystemId is the FK to SpfModuleParameterDefinition.systemId — used as join key
   parameterSystemId: number;
@@ -739,8 +755,8 @@ export interface ParameterDefinitionReadModel extends ReadModelBase {
 ```typescript
 // --- Merged application model (produced by handler, returned to upper layer) ---
 
-// Result of merging ParameterCalibrationReadModel + ParameterDefinitionReadModel
-export interface ParameterCalibrationDataModel {
+// Result of merging ParameterPayloadReadModel + ParameterDefinitionReadModel
+export interface ParameterCalibrationReadModel {
   parameterSystemId: number;
   changeInfo: ChangeInfo;
   parameterId: number;
@@ -756,165 +772,96 @@ export interface ParameterCalibrationDataModel {
 
 // --- Final return type of GetCkvCalibrationDataHandler ---
 
-export interface CkvCalibrationDataModel {
+export interface CkvCalibrationReadModel {
   ckv: CkvReadModel;
-  parameters: ParameterCalibrationDataModel[];  // merged, not raw DB rows
+  parameters: ParameterCalibrationReadModel[];  // merged, not raw DB rows
 }
 ```
 
-**Why `ParameterCalibrationDataModel` is needed?**
-`ParameterCalibrationReadModel` (DB read model) carries only the raw binary `payload` and a foreign key (`parameterSystemId`). `ParameterDefinitionReadModel` (DB read model) carries the schema metadata (`name`, `description`, `paramStructure`, `defaultData`, etc.) but no calibration value. Neither alone is sufficient for the upper layer. The handler merges them — joining on `parameterSystemId` → `systemId` and parsing the binary payload using `paramStructure` as the schema — to produce `ParameterCalibrationDataModel`, which contains both definition metadata and decoded calibration values in a single type ready for the controller to transform into a response DTO.
+**Why `ParameterCalibrationReadModel` is needed?**
+`ParameterPayloadReadModel` (DB read model) carries only the raw binary `payload` and a foreign key (`parameterSystemId`). `ParameterDefinitionReadModel` (DB read model) carries the schema metadata (`name`, `description`, `paramStructure`, `defaultData`, etc.) but no calibration value. Neither alone is sufficient for the upper layer. The handler merges them — joining on `parameterSystemId` → `systemId` and parsing the binary payload using `paramStructure` as the schema — to produce `ParameterCalibrationReadModel`, which contains both definition metadata and decoded calibration values in a single type ready for the controller to transform into a response DTO.
 
 **Why `ParsedElementData[]` instead of a raw JSON string?**
 `parsedData` is the result of binary parsing — it is already a structured TypeScript object. Storing it as a JSON string would require `JSON.parse()` at every consumer, lose all type safety, and embed a string-within-JSON in the HTTP response (a double-encoding anti-pattern). `ParsedElementData[]` gives the controller full typed access to individual fields (`value`, `type`, `name`, etc.) for DTO transformation, and is serialized to JSON automatically when the HTTP response is built.
 
 #### 2.5 Binary Parameter Parser
 
-**File:** `packages/core/src/application/usecase-designer/spf-module/get-cal-data/common/parameter-data-parser.ts` (new)
+**File:** `packages/core/src/application/usecase-designer/spf-module/param-parser/parse-elements.ts` (new)
 
 **Responsibilities:**
 - Parse a binary `payload` (or `defaultData` fallback) into `ParsedElementData[]` using `paramStructure` (JSON string) as the schema.
-- On parse failure, return a single opaque `CONFIG_ELEMENT` whose `value` is the hex string of the payload bytes, so the upper layer always receives a valid `ParsedElementData[]` with no special handling required.
+- On parse failure, return a single opaque `ConfigElement` whose `value` is the hex string of the payload bytes, so the upper layer always receives a valid `ParsedElementData[]` with no special handling required.
 
 **Key Features:**
 - **Structure-Driven Parsing:** Uses `paramStructure` (JSON) to know the field layout of the binary data
 - **Type Safety:** Comprehensive data type support (UInt8/16/32, Int8/16/32, Float, Double, RawData)
 - **Complex Structures:** Support for nested structs, arrays, and dynamic arrays
 - **Binary Reader:** Efficient DataView-based binary parsing with overflow protection
-- **Parse Failure Fallback:** On error, returns `[{ type: 'CONFIG_ELEMENT', name: '_raw', isReadOnly: true, value: <hexString> }]` instead of throwing — the controller needs no special handling
+- **Parse Failure Fallback:** On error, returns `[{ type: 'ConfigElement', name: '_raw', isReadOnly: true, value: <hexString> }]` instead of throwing — the controller needs no special handling
 
-##### 2.5.1 Class Interface
+##### 2.5.1 Function Interface
 
 ```typescript
-import { ParamStructureZodSchema } from './param-structure.schema.js';
-
-export class ParameterDataParser {
-  /**
-   * Parse binary parameter data using the parameter definition structure.
-   * @param payload        - Binary data to parse (payload or defaultData)
-   * @param paramStructure - JSON string describing the field layout
-   * @returns ParsedElementData[] — one entry per top-level element in the structure.
-   *          On parse failure, returns a single opaque CONFIG_ELEMENT with
-   *          name '_raw' and value set to the hex string of the payload bytes.
-   */
-  static parseParameterData(
-    payload: Uint8Array,
-    paramStructure: string,
-  ): ParsedElementData[] {
-    const rawJson = JSON.parse(paramStructure);             // unknown
-    const result = ParamStructureZodSchema.safeParse(rawJson);
-    // result type:
-    //   { success: true;  data: z.infer<typeof ParamStructureZodSchema> }
-    //                          = Array<z.infer<typeof DefinitionElementZodSchema>>
-    // | { success: false; error: ZodError }  ← result.error.issues has per-field details
-    //
-    // z.infer<typeof DefinitionElementZodSchema> is the TypeScript type automatically
-    // inferred by Zod from DefinitionElementZodSchema (the discriminated union defined
-    // in param-structure.schema.ts). It is a union of the inferred types of
-    // ConfigElementZodSchema | StructZodSchema | ElementArrayZodSchema.
-
-    if (!result.success) {
-      // log result.error.issues
-      return [rawFallback(payload)];
-    }
-    // result.data is now fully typed as z.infer<typeof ParamStructureZodSchema>
-    // iterate result.data and dispatch each element to the appropriate private parser
+/**
+ * Parse binary parameter data using the parameter definition structure.
+ * @param payload        - Binary data to parse
+ * @param paramStructure - JSON string describing the field layout (validated in DB layer)
+ * @returns ParsedElementData[] — one entry per top-level element in the structure.
+ *          On any error, returns a single opaque ConfigElement with
+ *          name '_raw' and value set to the hex string of the payload bytes.
+ */
+export function parseParameterData(
+  payload: Uint8Array,
+  paramStructure: string,
+): ParsedElementData[] {
+  try {
+    // paramStructure is validated in the DB layer before being stored;
+    // cast directly to DefinitionElement[] without re-validating.
+    const definitions = JSON.parse(paramStructure) as DefinitionElement[];
     const reader = new BinaryDataReader(payload);
-    // ...
+    const parsed: ParsedElementData[] = [];
+    for (const element of definitions) {
+      parsed.push(parseElement(element, reader, parsed));
+    }
+    return parsed;
+  } catch {
+    return [rawFallback(payload)];
   }
 }
 ```
 
 **What `parseParameterData` does:**
-1. Calls `JSON.parse(paramStructure)` to obtain a raw `unknown` JS object.
-2. Calls `ParamStructureZodSchema.safeParse(rawJson)` (Zod) to validate and type the object as a definition element array. If `result.success` is `false`, logs `result.error.issues` and returns the `_raw` fallback immediately — no binary reads are attempted.
-3. Creates a `BinaryDataReader` wrapping `payload`.
-4. Iterates over each definition element in `result.data` (the typed array produced by Zod in step 2) and dispatches to the appropriate private parser based on `elementType`:
+1. Calls `JSON.parse(paramStructure)` and casts directly to `DefinitionElement[]`. No Zod re-validation is performed — `paramStructure` is validated by the DB layer before storage.
+2. Creates a `BinaryDataReader` wrapping `payload`.
+3. Iterates over each definition element and dispatches to the appropriate private parser based on `elementType`:
    - `parseConfigElement` — reads a single scalar value from the reader based on `dataType` (UInt8/16/32, Int8/16/32, Float, Double, RawData) and returns a `ConfigElementData`.
    - `parseStruct` — recursively parses each child element in `elements` and returns a `StructData`.
-   - `parseElementArray` — evaluates `arrayLenFormulaStr` or uses `arrayLength` to determine item count; for each item, parses it according to `template` (a single `ParsedElementSchema`); returns an `ElementArrayData` with `value: ParsedElementData[]`. When a template element has no `name` in the JSON, the parser assigns a generated name: the `ElementArray`'s own `name` for the template schema (e.g., `"filter_coeffs"`), and `"<arrayName>[<index>]"` for each parsed item (e.g., `"filter_coeffs[0]"`).
-5. Returns the collected `ParsedElementData[]`.
-6. If any step in stages 3–5 throws (buffer overflow, unknown `elementType`), the catch block returns `[{ type: 'CONFIG_ELEMENT', name: '_raw', isReadOnly: true, value: Buffer.from(payload).toString('hex') }]` so the caller always receives a valid array.
+   - `parseElementArray` — evaluates `arrayLenFormulaStr` or uses `arrayLength` to determine item count; for each item, parses it according to `template`; returns an `ElementArrayData` with `value: ParsedElementData[]`. When a template element has no `name`, the parser assigns a generated name: the `ElementArray`'s own `name` for the template schema (e.g., `"filter_coeffs"`), and `"<arrayName>[<index>]"` for each parsed item (e.g., `"filter_coeffs[0]"`).
+4. Returns the collected `ParsedElementData[]`.
+5. If any step throws (malformed JSON, buffer overflow), the catch block returns `[{ type: 'ConfigElement', name: '_raw', isReadOnly: true, value: <hexString> }]` so the caller always receives a valid array.
 
 **Supported Element Types (`elementType` in `paramStructure` JSON):**
 - `ConfigElement` → scalar value (UInt8/16/32, Int8/16/32, Float, Double, RawData); `name` is optional for template elements inside `ElementArray`
 - `Struct` → named group of child elements (recursive); each child is a `DefinitionElement`
 - `ElementArray` → array of items, each item described by `template.elements` (a mixed list of `ConfigElement`, `Struct`, and nested `ElementArray`); length driven by `arrayLength` (static) or `arrayLenFormulaStr` (dynamic formula)
 
-##### 2.5.2 Zod Schema Design
+##### 2.5.2 Output Type: `ParsedElementData` Discriminated Union
 
-**File:** `packages/core/src/application/usecase-designer/spf-module/get-cal-data/common/param-structure.schema.ts` (new)
+**File:** `packages/core/src/application/usecase-designer/spf-module/param-parser/types/parsed-element-data.ts` (new)
 
-`paramStructure` is stored as a JSON string in the DB. In `parseParameterData`, Zod is used to **safely deserialize** the `unknown` result of `JSON.parse()` into a fully-typed definition element array without an unsafe `as` cast. This also provides a graceful `_raw` fallback if the DB schema ever drifts from the application schema.
+**`PARAMETER_ELEMENT_TYPE` const** — defined in `types/element-definition.ts` as the single source of truth for the `elementType` discriminator values used in both the DB-layer JSON schema and the `ParsedElementData` type fields:
 
 ```typescript
-const ConfigElementZodSchema = z.object({
-  elementType: z.literal('ConfigElement'),
-  name: z.string().optional(),           // optional — template elements inside ElementArray may omit name
-  description: z.string().optional(),
-  dataType: z.enum(['UInt8', 'UInt16', 'UInt32', 'Int8', 'Int16', 'Int32', 'Float', 'Double', 'RawData']),
-  displayType: z.string().optional(),
-  policy: z.string().optional(),
-  qFormat: z.string().optional(),        // Q-format notation
-  unitStr: z.string().optional(),
-  precision: z.number().optional(),
-  isReadOnly: z.boolean().optional(),
-  min: z.string().optional(),            // hex or decimal string, e.g. "0x00000000"
-  max: z.string().optional(),            // hex or decimal string, e.g. "0xFFFFFFFF"
-  defaultValue: z.string().optional(),
-  rangeList: z.array(z.object({ name: z.string(), value: z.string() })).optional(),
-  dependentOnElements: z.array(z.object({ name: z.string() })).optional(),
-  group: z.string().optional(),
-  subgroup: z.string().optional(),
-  // ... other optional fields
-});
-
-// z.lazy() is required because ElementArray can contain nested ElementArrays
-const ElementArrayZodSchema = z.lazy(() =>
-  z.object({
-    elementType: z.literal('ElementArray'),
-    name: z.string(),
-    description: z.string().optional(),
-    template: z.object({
-      elements: z.array(DefinitionElementZodSchema),  // mixed ConfigElement + nested ElementArray
-    }),
-    arrayLenFormulaStr: z.string().optional(),  // dynamic length formula
-    arrayLength: z.number().optional(),          // static length
-    groupSet: z.number().optional(),
-  })
-);
-
-// z.lazy() is required for Struct because it can contain nested elements
-const StructZodSchema = z.lazy(() =>
-  z.object({
-    elementType: z.literal('Struct'),
-    name: z.string(),
-    description: z.string().optional(),
-    structureType: z.string(),   // required — C type struct name, e.g. 'limiter_config_param_t'
-    elements: z.array(DefinitionElementZodSchema),
-  })
-);
-
-// Discriminated union — Zod uses 'elementType' to select the correct schema variant
-export const DefinitionElementZodSchema = z.discriminatedUnion('elementType', [
-  ConfigElementZodSchema,
-  StructZodSchema,
-  ElementArrayZodSchema,
-]);
-
-export const ParamStructureZodSchema = z.array(DefinitionElementZodSchema);
+// packages/core/src/application/usecase-designer/spf-module/param-parser/types/element-definition.ts
+export const PARAMETER_ELEMENT_TYPE = {
+  ConfigElement: 'ConfigElement',
+  Struct: 'Struct',
+  ElementArray: 'ElementArray',
+} as const;
 ```
 
-**Design Notes:**
-- `z.object()` (not `z.strict()`) is used so that unknown fields added by future AWSP format versions are silently stripped rather than causing a validation failure.
-- `z.lazy()` is required for `ElementArrayZodSchema` because `ElementArray` can contain nested `ElementArray` elements inside `template.elements`, creating a recursive type.
-- `z.discriminatedUnion('elementType', [...])` gives exhaustive type checking — if a new `elementType` is added to the format but not to the schema, `safeParse` will fail and return `_raw` rather than silently misinterpreting the element.
-- The Zod schemas are kept in a separate `param-structure.schema.ts` file so `parameter-data-parser.ts` stays focused on binary logic.
+The `DefinitionElement` interfaces (`ConfigElement`, `StructElement`, `ElementArray`) that describe the DB-layer JSON structure are exported from `types/element-definition.ts` and imported by `parse-elements.ts`. `ParsedElementBase` is defined and exported from `types/parsed-element-data.ts`.
 
-
-##### 2.5.3 Output Type: `ParsedElementData` Discriminated Union
-
-**File:** `packages/core/src/application/usecase-designer/spf-module/get-cal-data/common/parsed-element-data.ts` (new)
 
 Two separate type families are defined: `ParsedElementSchema` for schema descriptors (used in `template`) and `ParsedElementData` for parsed results (value fields required). This split gives the TypeScript compiler full precision — it is impossible to accidentally use a schema descriptor where a parsed result is expected, and vice versa.
 
@@ -936,7 +883,7 @@ interface ParsedElementBase {
 // Schema descriptor for a scalar element — carries display/constraint metadata
 // but no actual value. Used as template for ConfigElementArray items.
 export interface ConfigElementSchema extends ParsedElementBase {
-  type: 'CONFIG_ELEMENT';
+  type: typeof PARAMETER_ELEMENT_TYPE.ConfigElement;  // 'ConfigElement'
   dataType: string;                    // e.g. 'UInt8', 'Float', 'Double' — required for UI rendering
   unit?: string;                       // unitStr
   displayType?: string;                // e.g. 'hex', 'decimal'
@@ -955,7 +902,7 @@ export interface ConfigElementSchema extends ParsedElementBase {
 // structureType is the C type struct name (e.g. 'limiter_config_param_t'),
 // which may differ from the element's name (e.g. 'limiter').
 export interface StructSchema extends ParsedElementBase {
-  type: 'STRUCT';
+  type: typeof PARAMETER_ELEMENT_TYPE.Struct;  // 'Struct'
   structureType: string;               // C type struct name (required)
   children: ParsedElementSchema[];     // Child element schemas (no values)
 }
@@ -964,7 +911,7 @@ export interface StructSchema extends ParsedElementBase {
 // Schema descriptor for a nested ElementArray — carries template + length info
 // but no actual values. Used as template when an ElementArray contains nested ElementArrays.
 export interface ElementArraySchema extends ParsedElementBase {
-  type: 'ELEMENT_ARRAY';
+  type: typeof PARAMETER_ELEMENT_TYPE.ElementArray;  // 'ElementArray'
   template: ParsedElementSchema;  // schema of one item with default value
   length?: number;                // static array length (arrayLength)
   arrayLenFormulaStr?: string;    // dynamic length formula
@@ -1000,7 +947,7 @@ export interface ConfigElementData extends ConfigElementSchema {
 // length is the resolved array length (static arrayLength or formula-evaluated).
 // arrayLenFormulaStr is present only for dynamic arrays; absent for static arrays.
 export interface ElementArrayData extends ParsedElementBase {
-  type: 'ELEMENT_ARRAY';
+  type: typeof PARAMETER_ELEMENT_TYPE.ElementArray;  // 'ElementArray'
   // template holds the original element definition from paramStructure JSON (e.g. ConfigElementSchema
   // with dataType, defaultValue, min, max, rangeList, etc., or StructSchema with children, or a nested
   // ElementArraySchema). It carries no parsed value — it is the schema descriptor as-is from the
@@ -1017,7 +964,7 @@ export interface ElementArrayData extends ParsedElementBase {
 // Represents a named group of child elements parsed recursively.
 // isReadOnly is always false at the struct level; read-only status is per-child.
 export interface StructData extends ParsedElementBase {
-  type: 'STRUCT';
+  type: typeof PARAMETER_ELEMENT_TYPE.Struct;  // 'Struct'
   structureType: string;       // C type struct name (required)
   value: ParsedElementData[];  // Recursively parsed child elements (required; always non-empty)
 }
@@ -1037,27 +984,57 @@ export type ParsedElementData = ConfigElementData | StructData | ElementArrayDat
 
 | `type` | `value` TypeScript type | Content |
 |---|---|---|
-| `CONFIG_ELEMENT` | `string` (required) | Scalar numeric value converted to string via `.toString()` |
-| `STRUCT` | `ParsedElementData[]` (required) | Recursively parsed child elements; always non-empty |
-| `ELEMENT_ARRAY` | `ParsedElementData[]` (required) | Parsed items; each entry is one item (`ConfigElementData`, `StructData`, or `ElementArrayData`); empty `[]` when length = 0 |
+| `PARAMETER_ELEMENT_TYPE.ConfigElement` (`'ConfigElement'`) | `string` (required) | Scalar numeric value converted to string via `.toString()` |
+| `PARAMETER_ELEMENT_TYPE.Struct` (`'Struct'`) | `ParsedElementData[]` (required) | Recursively parsed child elements; always non-empty |
+| `PARAMETER_ELEMENT_TYPE.ElementArray` (`'ElementArray'`) | `ParsedElementData[]` (required) | Parsed items; each entry is one item (`ConfigElementData`, `StructData`, or `ElementArrayData`); empty `[]` when length = 0 |
 
 
-##### 2.5.4 Binary Data Reader
+##### 2.5.3 Binary Data Reader
+
+**File:** `packages/core/src/application/usecase-designer/spf-module/param-parser/utils/binary-data-reader.ts` (new)
 
 ```typescript
-class BinaryDataReader {
+export class BinaryDataReader {
+  constructor(data: Uint8Array);
   readUInt8(): number;
   readUInt16(): number;
   readUInt32(): number;
+  readUInt64(): bigint;
   readInt8(): number;
   readInt16(): number;
   readInt32(): number;
+  readInt64(): bigint;
   readFloat(): number;
   readDouble(): number;
   readRawData(length: number): Uint8Array;
   getRemainingBytes(): number;
+  align(alignment: number): void;
   // All read methods throw on buffer overflow
 }
+```
+
+##### 2.5.4 Formula Evaluator
+
+**File:** `packages/core/src/application/usecase-designer/spf-module/param-parser/utils/formular-evaluator.ts` (new)
+
+Recursive descent expression evaluator used by `ParameterDataParser` to resolve `arrayLenFormulaStr` into a concrete array length at parse time.
+
+**Supported syntax:**
+- Arithmetic operators: `+`, `-`, `*`, `/`
+- Grouping: `(expr)` or `[expr]`
+- Unary minus: `-expr`
+- Integer and decimal literals: `42`, `3.14`
+- Variables: identifiers resolved from previously parsed `ConfigElement` values by name
+- Built-in constants: `e` (Euler's number), `pi`
+- Functions: `log(x)` (base-10), `ln(x)` (natural log), `sqrt(x)`
+
+Throws on any parse or evaluation error (unknown variable, division by zero, syntax error). Callers that need a `0` fallback should wrap in try/catch.
+
+```typescript
+export function evaluateFormula(
+  formula: string,
+  variables: Map<string, number>,
+): number
 ```
 
 ### 3. Infrastructure Layer (Database & Session Management)
@@ -1178,13 +1155,13 @@ export class DbCkvCalibrationQueryService implements CkvQueryService {
     fileSystemId: number,
     ckvSystemId: number,
     paramSystemIds?: number[],
-  ): Promise<ParameterCalibrationReadModel[]>;
+  ): Promise<ParameterPayloadReadModel[]>;
 
   // ── Private helpers ───────────────────────────────────────────────────────
   private async queryCkvRow(ckvSystemId: number): Promise<CkvReadModel | null>;
-  private async queryCkvPayloads(ckvSystemId: number, paramSystemIds?: number[]): Promise<ParameterCalibrationReadModel[]>;
+  private async queryCkvPayloads(ckvSystemId: number, paramSystemIds?: number[]): Promise<ParameterPayloadReadModel[]>;
   private transformToCkvReadModel(row: CkvRow, editAction?: EditActionRow): CkvReadModel;
-  private transformToParameterCalibrationReadModel(row: CkvParameterPayloadRow, editAction?: EditActionRow): ParameterCalibrationReadModel;
+  private transformToParameterCalibrationReadModel(row: CkvParameterPayloadRow, editAction?: EditActionRow): ParameterPayloadReadModel;
   private buildKeyValuePairs(keyVector: KeyVectorRow): KeyValuePairReadModel[];
 }
 ```
@@ -1268,18 +1245,18 @@ private transformToCkvReadModel(row: CkvRow, editAction?: EditActionRow): CkvRea
 }
 ```
 
-##### 3.2.2 `getCkvPayloads` — Fetch ParameterCalibrationReadModel[] with Session Overlay
+##### 3.2.2 `getCkvPayloads` — Fetch ParameterPayloadReadModel[] with Session Overlay
 
 **File:** `packages/infrastructure/persistence/src/persistence-typeorm-sqllite/queries/module-calibration/db-ckv-calibration-query-service.ts` (new)
 
-`DbCkvCalibrationQueryService.getCkvPayloads(fileSystemId, ckvSystemId, paramSystemIds?)` queries the `CkvParameterPayload` table and applies session overlay to return `ParameterCalibrationReadModel[]`.
+`DbCkvCalibrationQueryService.getCkvPayloads(fileSystemId, ckvSystemId, paramSystemIds?)` queries the `CkvParameterPayload` table and applies session overlay to return `ParameterPayloadReadModel[]`.
 
 ```typescript
 async getCkvPayloads(
   fileSystemId: number,
   ckvSystemId: number,
   paramSystemIds?: number[],
-): Promise<ParameterCalibrationReadModel[]> {
+): Promise<ParameterPayloadReadModel[]> {
   // STEP 1: Find active session
   const session = await this.editActionsQueryService.findActiveSession(fileSystemId);
 
@@ -1313,7 +1290,7 @@ async getCkvPayloads(
 private async queryCkvPayloads(
   ckvSystemId: number,
   paramSystemIds?: number[],
-): Promise<ParameterCalibrationReadModel[]> {
+): Promise<ParameterPayloadReadModel[]> {
   const qb = this.dataSource.getRepository('CkvParameterPayload')
     .createQueryBuilder('payload')
     .where('payload.ckvSystemId = :ckvSystemId', {ckvSystemId});
@@ -1329,7 +1306,7 @@ private async queryCkvPayloads(
 private transformToParameterCalibrationReadModel(
   row: CkvParameterPayloadRow,
   editAction?: EditActionRow,
-): ParameterCalibrationReadModel {
+): ParameterPayloadReadModel {
   // ReadModelBase fields:
   //   systemId   → taken directly from the DB row's primary key
   //   changeInfo → derived from the matched EditActionRow (if any):
@@ -1469,16 +1446,16 @@ The three infrastructure reads feed into `buildParameterDataModels()` in the han
 ```
 CkvReadModel                    ──────────────────────────────────────────────────────┐
                                                                                        ▼
-ParameterCalibrationReadModel[] ──► join on parameterSystemId → systemId ──► ParameterDataParser ──► ParameterCalibrationDataModel[]
+ParameterPayloadReadModel[]     ──► join on parameterSystemId → systemId ──► ParameterDataParser ──► ParameterCalibrationReadModel[]
 ParameterDefinitionReadModel[]  ──┘  (payload, paramStructure)                                        │
                                                                                        ▼
-                                                                              CkvCalibrationDataModel
+                                                                              CkvCalibrationReadModel
                                                                               (returned to controller)
 ```
 
 **Per-parameter transformation:**
 ```typescript
-// For each ParameterCalibrationReadModel p:
+// For each ParameterPayloadReadModel p:
 const def = defMap.get(p.parameterSystemId);     // matched ParameterDefinitionReadModel (FK → PK join)
 
 // if p.payload is null → parsedData = null (no binary data stored)
@@ -1490,43 +1467,74 @@ const def = defMap.get(p.parameterSystemId);     // matched ParameterDefinitionR
 | Stage | Type |
 |---|---|
 | DB read (CKV) | `CkvReadModel` |
-| DB read (payloads) | `ParameterCalibrationReadModel[]` |
+| DB read (payloads) | `ParameterPayloadReadModel[]` |
 | DB read (definitions) | `ParameterDefinitionReadModel[]` |
 | After binary parse | `ParsedElementData[]` per parameter |
-| After merge | `ParameterCalibrationDataModel[]` |
-| Final handler output | `CkvCalibrationDataModel` |
+| After merge | `ParameterCalibrationReadModel[]` |
+| Final handler output | `CkvCalibrationReadModel` |
 | Controller output | `SpfModuleCalDataResponseDto` |
 
 ## Testing Strategy
 
 ### Unit Tests
 
-**Location:** `packages/core/tests/unit/application/usecase-designer/spf-module/get-cal-data/`
+**Location:** `packages/core/tests/unit/application/usecase-designer/spf-module/`
 
-#### `ParameterDataParser` (highest priority — most complex component)
+#### `parseParameterData` — `parse-elements.spec.ts`
 
-Test file: `parameter-data-parser.spec.ts`
+**Location:** `param-parser/`
 
 | Test case | Description |
 |---|---|
-| `ConfigElement` — UInt8/16/32 | Parse a single-field binary buffer; verify `type: 'CONFIG_ELEMENT'`, `name`, `value` as string |
+| `ConfigElement` — UInt8/16/32 | Parse a single-field binary buffer; verify `type: PARAMETER_ELEMENT_TYPE.ConfigElement`, `name`, `value` as string |
 | `ConfigElement` — Int8/16/32 | Parse signed integers including negative values |
 | `ConfigElement` — Float/Double | Parse floating-point values; verify string representation |
 | `ConfigElement` — RawData | Parse raw byte array; verify `Array.from().toString()` output |
-| `ConfigElement` — name absent | Template element with no `name` field parses successfully |
-| `Struct` — flat children | Parse a struct with scalar children; verify `type: 'STRUCT'` and `value[]` |
+| `ConfigElement` — name absent | Template element with no `name` field parses successfully; auto-generated name used |
+| `Struct` — flat children | Parse a struct with scalar children; verify `type: PARAMETER_ELEMENT_TYPE.Struct` and `value[]` |
 | `Struct` — nested | Parse a struct containing another struct; verify recursive `value[]` |
-| `ElementArray` — static length (`arrayLength`) | Parse `arrayLength` items; verify `type: 'ELEMENT_ARRAY'`, `length`, `value[]` count |
-| `ElementArray` — dynamic length (`arrayLenFormulaStr`) | Parse formula-driven array; verify `arrayLenFormulaStr` is set |
+| `ElementArray` — static length (`arrayLength`) | Parse `arrayLength` items; verify `type: PARAMETER_ELEMENT_TYPE.ElementArray`, `length`, `value[]` count |
+| `ElementArray` — formula-driven length | `arrayLenFormulaStr` resolved from previously parsed element; correct item count |
 | `ElementArray` — item is `ConfigElement` | Each `value[i]` is a `ConfigElementData` |
 | `ElementArray` — item is `Struct` | Each `value[i]` is a `StructData` |
 | `ElementArray` — nested (item is `ElementArray`) | Each `value[i]` is an `ElementArrayData`; verify recursive parsing |
 | Buffer overflow | Pass a payload shorter than the schema requires; verify `_raw` fallback returned |
 | Malformed `paramStructure` JSON | Pass invalid JSON string; verify `_raw` fallback returned |
-| Unknown `elementType` | Pass a schema with an unrecognized element type; verify `_raw` fallback returned |
 | Empty payload | Pass a zero-length `Uint8Array`; verify `_raw` fallback returned |
 
+#### `evaluateFormula` — `formula-evaluator.spec.ts`
+
+**Location:** `param-parser/`
+
+| Test case | Description |
+|---|---|
+| Integer and decimal literals | `42` → 42; `3.14` → 3.14 |
+| Arithmetic operators | `+`, `-`, `*`, `/` with correct precedence |
+| Unary minus | `-5`, `-x`, `--5` |
+| Grouping | `(expr)`, `[expr]`, nested, mixed |
+| Variables | Single, multiple, unknown → throws |
+| Built-in constants | `e` ≈ 2.718, `pi` ≈ 3.14159 |
+| Built-in functions | `log(100)` ≈ 2, `ln(e)` ≈ 1, `sqrt(9)` = 3, unknown → throws |
+| Error cases | Division by zero, unclosed parenthesis, unexpected character, trailing garbage |
+| Whitespace | Leading/trailing/around operators ignored |
+
+#### `BinaryDataReader` — `binary-data-reader.spec.ts`
+
+**Location:** `param-parser/`
+
+| Test case | Description |
+|---|---|
+| `readUInt8/16/32/64` | Correct little-endian value; offset advances; overflow throws |
+| `readInt8/16/32/64` | Positive and negative values; overflow throws |
+| `readFloat` / `readDouble` | Correct IEEE 754 value; overflow throws |
+| `readRawData` | Returns correct byte slice; offset advances; overflow throws |
+| `getRemainingBytes` | Returns full length initially; decrements after reads; reaches 0 |
+| `align` | No-op when already aligned; advances to next boundary; no-op for alignment=1 |
+| Sequential reads | Multiple typed reads in sequence share the same advancing offset |
+
 #### `GetCkvCalibrationDataHandler.buildParameterDataModels()`
+
+**Location:** `get-cal-data/`
 
 Test file: `get-ckv-cal-data.handler.spec.ts`
 
@@ -1534,8 +1542,8 @@ Test file: `get-ckv-cal-data.handler.spec.ts`
 |---|---|
 | Join by `parameterSystemId` | Payloads and definitions matched correctly via FK→PK join; output contains merged fields |
 | Payload present, definition present | `p.payload` parsed with `def.paramStructure`; `parsedData` is non-null |
-| Payload present, definition missing | `p.payload` parsed with empty `paramStructure`; `parsedData` is `[{name: '_raw', ...}]` |
-| Payload absent (`null`) | `parsedData` is `null` regardless of definition |
+| Payload present, definition missing | Throws `ParameterDefinitionMissingError` (FK integrity violation — not silently swallowed) |
+| Payload absent (`null`) | `parsedData` is `null` regardless of definition presence |
 | `changeInfo` propagated | `changeInfo` from `ParameterCalibrationReadModel` appears in output |
 
 ### Integration Tests

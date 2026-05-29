@@ -11,10 +11,12 @@ import {
   Body,
   Param,
   Query,
+  Req,
   HttpStatus,
   HttpException,
   UseGuards,
 } from '@nestjs/common';
+import type {Request} from 'express';
 import {ApiTags, ApiExtraModels, ApiParam, ApiQuery} from '@nestjs/swagger';
 import {BaseController} from '../base/base.controller.js';
 import {AuthGuard} from '@nestjs/passport';
@@ -34,16 +36,17 @@ import {
 } from './dto/request/spf-module-request.dto.js';
 import {ApiDocumentationWithExample} from '../../common/swagger-doc/swagger.decorator.js';
 import {ApiResult} from '../../common/dto/api-response/api-result.dto.js';
-import {QueryBus, GetCkvCalibrationDataQuery} from '@arc/core';
+import {QueryBus, GetCkvCalibrationDataQuery, EntityNotFoundError, InvalidParameterError, ParameterDefinitionMissingError} from '@arc/core';
 import type {
-  CkvCalibrationDataModel,
-  ParameterCalibrationDataModel,
+  CkvCalibrationReadModel,
+  ParameterCalibrationReadModel,
   ParsedElementData,
-  ParsedElementSchema,
+  ElementSchema,
   ConfigElementData,
   ElementArrayData,
   StructData,
 } from '@arc/core';
+import {PARAMETER_ELEMENT_TYPE} from '@arc/core';
 import type {ChangeInfoDto} from '../../common/dto/base.dto.js';
 import {NameValuePairDto} from '../../common/dto/element-data/elements/config-element/name-value-pair.dto.js';
 import {KeyValueDto, KeyDto, ValueDto} from '../../common/dto/key-value.dto.js';
@@ -284,32 +287,22 @@ export class SpfModuleController extends BaseController {
     ],
   })
   async getCalibrationData(
+    @Req() req: Request,
     @Param('projectId') projectId: string,
     @Param('spfModuleSystemId') spfModuleSystemId: string,
     @Param('ckvSystemId') ckvSystemId: string,
     @Query('param-system-ids') paramSystemIds?: string,
   ): Promise<ApiResult<SpfModuleCalDataResponseDto>> {
-    const projectIdNum = this.parseIntParam(projectId, 'projectId');
-    const moduleSystemIdNum = this.parseIntParam(
-      spfModuleSystemId,
-      'spfModuleSystemId',
-    );
-    const ckvSystemIdNum = this.parseIntParam(ckvSystemId, 'ckvSystemId');
-    const parsedParamIds = paramSystemIds
-      ? paramSystemIds
-          .split(',')
-          .map(id => this.parseIntParam(id.trim(), 'param-system-ids'))
-      : undefined;
-
     try {
+      const clientId = (req.user as {sub?: string})?.sub ?? 'unknown';
       const query = new GetCkvCalibrationDataQuery(
-        projectIdNum,
-        moduleSystemIdNum,
-        ckvSystemIdNum,
-        'client-id',
-        parsedParamIds,
+        projectId,
+        spfModuleSystemId,
+        ckvSystemId,
+        clientId,
+        paramSystemIds,
       );
-      const model = await this.queryBus.execute<CkvCalibrationDataModel>(query);
+      const model = await this.queryBus.execute<CkvCalibrationReadModel>(query);
       return {
         data: this.transformToCalibrationDataDto(model),
         success: true,
@@ -317,9 +310,14 @@ export class SpfModuleController extends BaseController {
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
-      const msg = error instanceof Error ? error.message : String(error);
-      if (msg.toLowerCase().includes('not found')) {
-        throw new HttpException(msg, HttpStatus.NOT_FOUND);
+      if (error instanceof InvalidParameterError) {
+        throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+      }
+      if (error instanceof EntityNotFoundError) {
+        throw new HttpException(error.message, HttpStatus.NOT_FOUND);
+      }
+      if (error instanceof ParameterDefinitionMissingError) {
+        throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
       }
       throw new HttpException(
         'Failed to retrieve calibration data',
@@ -647,7 +645,7 @@ export class SpfModuleController extends BaseController {
   }
 
   private transformToCalibrationDataDto(
-    model: CkvCalibrationDataModel,
+    model: CkvCalibrationReadModel,
   ): SpfModuleCalDataResponseDto {
     const dto = new SpfModuleCalDataResponseDto();
     dto.systemId = model.ckv.systemId.toString();
@@ -671,7 +669,7 @@ export class SpfModuleController extends BaseController {
   }
 
   private transformParameterDto(
-    p: ParameterCalibrationDataModel,
+    p: ParameterCalibrationReadModel,
   ): ParameterDetailDto {
     const dto = new ParameterDetailDto();
     dto.systemId = p.parameterSystemId.toString();
@@ -690,10 +688,10 @@ export class SpfModuleController extends BaseController {
   }
 
   private transformElement(element: ParsedElementData): ElementDto {
-    if (element.type === 'CONFIG_ELEMENT') {
+    if (element.type === PARAMETER_ELEMENT_TYPE.ConfigElement) {
       return this.transformConfigElement(element);
     }
-    if (element.type === 'ELEMENT_ARRAY') {
+    if (element.type === PARAMETER_ELEMENT_TYPE.ElementArray) {
       return this.transformElementArray(element);
     }
     return this.transformStruct(element);
@@ -749,8 +747,8 @@ export class SpfModuleController extends BaseController {
     return dto;
   }
 
-  private transformSchema(schema: ParsedElementSchema): ElementDto {
-    if (schema.type === 'CONFIG_ELEMENT') {
+  private transformSchema(schema: ElementSchema): ElementDto {
+    if (schema.type === PARAMETER_ELEMENT_TYPE.ConfigElement) {
       const dto = new ConfigElementDto();
       dto.name = schema.name;
       dto.value = schema.defaultValue ?? '';
@@ -775,7 +773,7 @@ export class SpfModuleController extends BaseController {
       });
       return dto;
     }
-    if (schema.type === 'ELEMENT_ARRAY') {
+    if (schema.type === PARAMETER_ELEMENT_TYPE.ElementArray) {
       const dto = new ElementTemplateArrayDto();
       dto.name = schema.name;
       dto.isReadOnly = schema.isReadOnly;
