@@ -7,7 +7,6 @@ import type {
   ParameterDefinitionQueryService,
   ParameterDefinitionReadModel,
 } from '@arc/core';
-import {CHANGE_OPERATION} from '@arc/core';
 import {ENTITY_NAMES} from '../../entity-schema/entity-table-names.js';
 import type {EditActionsQueryService} from '../edit-session/edit-actions-query-service.js';
 import {applyToCollection} from '../edit-session/overlay-merge.js';
@@ -99,21 +98,14 @@ export class DbParameterDefinitionQueryService implements ParameterDefinitionQue
 
   private transformToParameterDefinitionReadModel(
     row: SpfModuleParameterDefinitionRow,
-    editAction?: EditActionRow,
+    _editAction?: EditActionRow,
   ): ParameterDefinitionReadModel {
     return {
       systemId: row.systemId,
-      changeInfo: editAction
-        ? {
-            changeType: editAction.operation,
-            changeId: editAction.changeId,
-            changeStatus: editAction.changeStatus,
-          }
-        : {changeType: CHANGE_OPERATION.None},
       parameterId: row.paramId,
       name: row.name ?? '',
       description: row.description,
-      paramStructure: row.elementsStructure ?? '',
+      elementsStructure: row.elementsStructure ?? '',
       isReadOnly: row.isReadOnly ?? false,
       pidType: row.pidType ?? '',
     };

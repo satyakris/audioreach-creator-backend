@@ -44,14 +44,18 @@ export class DbQueryServices implements QueryServices {
       dataSource,
     );
     this.bulkReadRepository = new TypeOrmBulkReadRepository(dataSource);
-    this.spfModuleQueryService = new DbSpfModuleQueryService(
-      dataSource,
-      editActionsQueryService,
-    );
+
+    // SPF module services — shared EditActionsQueryService instance
+    // Definition service created first — injected into module service
     this.spfModuleDefinitionQueryService =
       new DbSpfModuleDefinitionQueryService(
         dataSource,
         editActionsQueryService,
       );
+    this.spfModuleQueryService = new DbSpfModuleQueryService(
+      dataSource,
+      editActionsQueryService,
+      this.spfModuleDefinitionQueryService,
+    );
   }
 }

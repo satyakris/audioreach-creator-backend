@@ -8,7 +8,8 @@ import {ArcCqrsModule} from '../../../../infrastructure-wrapper/arc-cqrs.module.
 
 /**
  * Module for SPF module functionality.
- * Imports ArcCqrsModule to provide QueryBus for the controller.
+ * Imports ArcCqrsModule to make QueryBus available for constructor injection
+ * in SpfModuleController — same pattern as UseCaseModule.
  */
 @Module({
   imports: [ArcCqrsModule],

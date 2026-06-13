@@ -58,6 +58,7 @@ export abstract class BaseDto {
   @ApiProperty({
     description: 'Change information for this resource',
     type: ChangeInfoDto,
+    required: false,
   })
-  changeInfo!: ChangeInfoDto;
+  changeInfo?: ChangeInfoDto;
 }

@@ -12,6 +12,7 @@ import {
   Param,
   Query,
   Req,
+  HttpCode,
   HttpStatus,
   HttpException,
   UseGuards,
@@ -38,24 +39,40 @@ import {ApiDocumentationWithExample} from '../../common/swagger-doc/swagger.deco
 import {ApiResult} from '../../common/dto/api-response/api-result.dto.js';
 import {
   QueryBus,
+  QuerySpfModulesQuery,
+  type QuerySpfModulesResult,
+  type SpfModuleReadModel,
+  type DataPortReadModel,
+  type ControlPortReadModel,
   GetCkvCalibrationDataQuery,
-  EntityNotFoundError,
-  InvalidParameterError,
-  ParameterDefinitionMissingError,
-  PARAMETER_ELEMENT_TYPE,
   type CkvCalibrationReadModel,
+  InvalidParameterError,
+  EntityNotFoundError,
+  ParameterDefinitionMissingError,
   type ParameterCalibrationReadModel,
   type ParsedElementData,
-  type ElementSchema,
+  PARAMETER_ELEMENT_TYPE,
   type ConfigElementData,
   type ElementArrayData,
   type StructData,
+  type ElementSchema,
 } from '@arc/core';
-import type {ChangeInfoDto} from '../../common/dto/base.dto.js';
-import {NameValuePairDto} from '../../common/dto/element-data/elements/config-element/name-value-pair.dto.js';
-import {KeyValueDto, KeyDto, ValueDto} from '../../common/dto/key-value.dto.js';
-
-type ElementDto = ConfigElementDto | ElementTemplateArrayDto | StructDto;
+import {
+  DataPortDto,
+  PortIoType,
+  PortType,
+} from '../../common/dto/data-port.dto.js';
+import {
+  ControlPortDto,
+  ControlPortIntentDto,
+} from '../../common/dto/control-port.dto.js';
+import {
+  KeyDto,
+  KeyValueDto,
+  ValueDto,
+} from 'presentation/rest/common/dto/key-value.dto.js';
+import type {ChangeInfoDto} from 'presentation/rest/common/dto/base.dto.js';
+import {NameValuePairDto} from 'presentation/rest/common/dto/element-data/elements/config-element/name-value-pair.dto.js';
 
 /**
  * Controller to support all module related APIs for usecase design
@@ -92,14 +109,7 @@ export class SpfModuleController extends BaseController {
    * Query SPF modules with optional data inclusion.
    */
   @Post('query')
-  @ApiQuery({
-    name: 'include',
-    required: false,
-    type: String,
-    description:
-      'Comma-separated list of optional data to include (ckvs, tags, properties)',
-    example: 'ckvs,tags',
-  })
+  @HttpCode(HttpStatus.OK)
   @ApiDocumentationWithExample({
     summary: 'Query SPF modules with optional data inclusion',
     description:
@@ -135,29 +145,58 @@ export class SpfModuleController extends BaseController {
       },
     ],
   })
+  @ApiQuery({
+    name: 'includeTuningConfig',
+    required: false,
+    type: Boolean,
+    description:
+      'When true, includes CKV and TKV tuning catalogue (parameter names) in each module response.',
+  })
   async querySpfModules(
     @Param('projectId') projectId: string,
-    @Body() spfModuleSystemIds: SystemIdsRequestDto,
-    @Query('include') include?: string,
+    @Body() body: SystemIdsRequestDto,
+    @Query('includeTuningConfig') includeTuningConfig?: string,
   ): Promise<ApiResult<SpfModuleDto[]>> {
-    const includeOptions =
-      include?.split(',').map(s => s.trim().toLowerCase()) || [];
+    try {
+      if (!body?.systemIds?.length) {
+        throw new HttpException(
+          'systemIds array is required and cannot be empty',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
 
-    await Promise.resolve(); // Placeholder to satisfy linter
-    console.log(
-      'Getting SPF modules in project:',
-      projectId,
-      'with system IDs:',
-      spfModuleSystemIds,
-      'including:',
-      includeOptions.length > 0
-        ? includeOptions.join(', ')
-        : 'base fields only',
-    );
-    throw new HttpException(
-      'SPF modules retrieval functionality is not implemented yet.',
-      HttpStatus.NOT_IMPLEMENTED,
-    );
+      const systemIds = body.systemIds.map(id => {
+        const parsed = Number.parseInt(id, 10);
+        if (Number.isNaN(parsed)) {
+          throw new HttpException(
+            `Invalid SPF module system ID: ${id}`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        return parsed;
+      });
+
+      const query = new QuerySpfModulesQuery(
+        systemIds,
+        Number(projectId),
+        includeTuningConfig === 'true',
+        'client-id',
+      );
+
+      const result = await this.queryBus.execute<QuerySpfModulesResult>(query);
+
+      return {
+        data: result.modules.map(m => this.mapToSpfModuleDto(m)),
+        success: true,
+        message: 'SPF modules retrieved successfully',
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        'Failed to retrieve SPF modules',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
   }
 
   /**
@@ -620,6 +659,60 @@ export class SpfModuleController extends BaseController {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
+  /**
+   * Maps SpfModuleReadModel → SpfModuleDto.
+   * SpfModuleReadModel uses number systemIds and typed PortIoType/PortType enums.
+   * SpfModuleDto uses string systemIds and the API-layer enum values.
+   */
+  private mapToSpfModuleDto(m: SpfModuleReadModel): SpfModuleDto {
+    const dto = new SpfModuleDto(
+      String(m.systemId),
+      m.instanceId,
+      m.moduleId,
+      m.name,
+      m.parentId,
+    );
+    dto.alias = m.alias;
+    dto.subgraphId = m.subgraphId;
+    dto.containerId = m.containerId;
+    dto.maxInputPortsSupported = m.maxInputPortsSupported;
+    dto.maxOutputPortsSupported = m.maxOutputPortsSupported;
+    dto.maxControlPortsSupported = m.maxControlPortsSupported;
+    dto.dataPorts = m.dataPorts.map(p => this.mapDataPortToDto(p));
+    dto.controlPorts = m.controlPorts.map(p => this.mapControlPortToDto(p));
+
+    return dto;
+  }
+
+  /**
+   * Maps DataPortReadModel → DataPortDto.
+   * portIoType: domain PortIoType string → API PortIoType enum.
+   * isStatic: boolean → API PortType enum (Static | Dynamic).
+   */
+  private mapDataPortToDto(p: DataPortReadModel): DataPortDto {
+    return new DataPortDto(
+      String(p.systemId),
+      p.portId,
+      p.name,
+      p.portIoType === 'Input' ? PortIoType.Input : PortIoType.Output,
+      p.isStatic ? PortType.Static : PortType.Dynamic,
+    );
+  }
+
+  /**
+   * Maps ControlPortReadModel → ControlPortDto.
+   * Includes allocated intents — each intent has an intentId and a generated name.
+   */
+  private mapControlPortToDto(p: ControlPortReadModel): ControlPortDto {
+    return new ControlPortDto(
+      String(p.systemId),
+      p.portId,
+      p.name,
+      p.isStatic ? PortType.Static : PortType.Dynamic,
+      p.allocatedIntents.map(i => new ControlPortIntentDto(i.intentId, i.name)),
+    );
+  }
+
   private toChangeInfoDto(ci: {
     changeType: string;
     changeId?: number;
@@ -632,6 +725,9 @@ export class SpfModuleController extends BaseController {
     };
   }
 
+  /**
+   * Transforms CkvCalibrationReadModel to CalDataDto.
+   */
   private transformToCalibrationDataDto(
     model: CkvCalibrationReadModel,
   ): CalDataDto {
@@ -671,11 +767,15 @@ export class SpfModuleController extends BaseController {
     return dto;
   }
 
-  private transformElements(elements: ParsedElementData[]): ElementDto[] {
+  private transformElements(
+    elements: ParsedElementData[],
+  ): (ConfigElementDto | ElementTemplateArrayDto | StructDto)[] {
     return elements.map(e => this.transformElement(e));
   }
 
-  private transformElement(element: ParsedElementData): ElementDto {
+  private transformElement(
+    element: ParsedElementData,
+  ): ConfigElementDto | ElementTemplateArrayDto | StructDto {
     if (element.type === PARAMETER_ELEMENT_TYPE.ConfigElement) {
       return this.transformConfigElement(element);
     }
@@ -735,7 +835,9 @@ export class SpfModuleController extends BaseController {
     return dto;
   }
 
-  private transformSchema(schema: ElementSchema): ElementDto {
+  private transformSchema(
+    schema: ElementSchema,
+  ): ConfigElementDto | ElementTemplateArrayDto | StructDto {
     if (schema.type === PARAMETER_ELEMENT_TYPE.ConfigElement) {
       const dto = new ConfigElementDto();
       dto.name = schema.name;

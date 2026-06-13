@@ -46,6 +46,23 @@ export * from './application/ports/persistence/query-services/spf-module-definit
 export * from './application/ports/persistence/query-services/spf-module-definition/parameter-definition/parameter-definition-query-service.js';
 export * from './application/ports/persistence/query-services/spf-module-definition/spf-module-definition-query-service.js';
 
+// SPF module query services and read models
+export * from './application/ports/persistence/query-services/spf-module/spf-module-query-service.js';
+export * from './application/ports/persistence/query-services/spf-module/spf-module-read-model.js';
+export * from './application/ports/persistence/query-services/node/port/data-port-query-service.js';
+export * from './application/ports/persistence/query-services/node/port/control-port-query-service.js';
+export * from './application/ports/persistence/query-services/spf-module/tuning/tuning-config-read-model.js';
+export * from './application/ports/persistence/query-services/spf-module/tuning/spf-tuning-config-service.js';
+export * from './application/ports/persistence/query-services/spf-module-definition/definition-attribute.js';
+export * from './application/ports/persistence/query-services/spf-module-definition/spf-module-definition-query-service.js';
+export * from './application/ports/persistence/query-services/spf-module-definition/spf-module-definition-read-model.js';
+export * from './application/ports/persistence/query-services/spf-module-definition/parameter-definition/parameter-definition-query-service.js';
+export * from './application/ports/persistence/query-services/spf-module-definition/parameter-definition/parameter-definition-read-model.js';
+
+// SPF module query handlers
+export * from './application/usecase-designer/spf-module/query/query-spf-modules.query.js';
+export * from './application/usecase-designer/spf-module/query/query-spf-modules.handler.js';
+
 // Use case designer
 export * from './application/usecase-designer/spf-module/param-parser/index.js';
 export * from './application/usecase-designer/spf-module/get-cal-data/ckv-calibration-read-model.js';

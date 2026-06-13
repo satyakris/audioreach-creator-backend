@@ -21,7 +21,7 @@ export const CHANGE_STATUS = {
 export type ChangeStatus = (typeof CHANGE_STATUS)[keyof typeof CHANGE_STATUS];
 
 export interface ChangeInfo {
-  changeType: ChangeOperation;
+  changeType: ChangeOperation; // 'NONE' | 'CREATE' | 'UPDATE' | 'DELETE'
   changeId?: number; // EditActionRow.changeId — present when changeType != NONE
-  changeStatus?: ChangeStatus;
+  changeStatus?: ChangeStatus; // 'STAGED' | 'UNSTAGED' — present when changeType != NONE
 }

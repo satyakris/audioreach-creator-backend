@@ -101,11 +101,11 @@ export class GetCkvCalibrationDataHandler implements QueryHandler<
 
       const parsedData: ParsedElementData[] | null =
         p.payload !== null && def !== undefined
-          ? parseParameterData(p.payload, def.paramStructure)
+          ? parseParameterData(p.payload, def.elementsStructure)
           : null;
 
       return {
-        parameterSystemId: p.systemId,
+        parameterSystemId: p.parameterSystemId,
         changeInfo: p.changeInfo,
         parameterId: def?.parameterId ?? 0,
         name: def?.name ?? '',

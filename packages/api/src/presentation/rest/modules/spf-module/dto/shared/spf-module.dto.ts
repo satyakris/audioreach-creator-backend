@@ -6,7 +6,6 @@
 import {ApiProperty} from '@nestjs/swagger';
 import {BaseConnectableComponentDto} from '../../../../common/dto/component.dto.js';
 import {PropertyDto} from '../../../../common/dto/index.js';
-import {CkvDto, TagInfoDto} from './tuning-config.dto.js';
 
 /**
  * DTO for SPF module properties
@@ -44,30 +43,6 @@ export class SpfModuleDto extends BaseConnectableComponentDto {
 
   @ApiProperty({description: 'Maximum number of control ports supported'})
   maxControlPortsSupported!: number;
-
-  @ApiProperty({description: 'Heap ID'})
-  heapId!: number;
-
-  @ApiProperty({
-    description: 'Calibration key-values configuration',
-    type: [CkvDto],
-    required: false,
-  })
-  ckvs?: CkvDto[];
-
-  @ApiProperty({
-    description: 'Tag information containing tag key-values',
-    type: [TagInfoDto],
-    required: false,
-  })
-  tags?: TagInfoDto[];
-
-  @ApiProperty({
-    description: 'Module instance properties',
-    type: [PropertyDto],
-    required: false,
-  })
-  properties?: PropertyDto[];
 
   constructor(
     systemId: string,
