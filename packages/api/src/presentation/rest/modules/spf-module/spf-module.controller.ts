@@ -296,7 +296,7 @@ export class SpfModuleController extends BaseController {
     @Param('spfModuleSystemId') spfModuleSystemId: string,
     @Param('ckvSystemId') ckvSystemId: string,
     @Query('param-system-ids') paramSystemIds?: string,
-  ): Promise<ApiResult<SpfModuleCalDataResponseDto>> {
+  ): Promise<ApiResult<CalDataDto>> {
     try {
       const clientId = (req.user as {sub?: string})?.sub ?? 'unknown';
       const query = new GetCkvCalibrationDataQuery(
@@ -634,8 +634,8 @@ export class SpfModuleController extends BaseController {
 
   private transformToCalibrationDataDto(
     model: CkvCalibrationReadModel,
-  ): SpfModuleCalDataResponseDto {
-    const dto = new SpfModuleCalDataResponseDto();
+  ): CalDataDto {
+    const dto = new CalDataDto();
     dto.systemId = model.ckv.systemId.toString();
     dto.changeInfo = this.toChangeInfoDto(model.ckv.changeInfo);
     dto.Ckv = model.ckv.keyValuePairs.map(kv => {
