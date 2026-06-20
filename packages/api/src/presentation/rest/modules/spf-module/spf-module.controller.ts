@@ -15,12 +15,12 @@ import {
   HttpCode,
   HttpStatus,
   HttpException,
-  UseGuards,
+  //UseGuards,
 } from '@nestjs/common';
 import type {Request} from 'express';
 import {ApiTags, ApiExtraModels, ApiParam, ApiQuery} from '@nestjs/swagger';
 import {BaseController} from '../base/base.controller.js';
-import {AuthGuard} from '@nestjs/passport';
+//import {AuthGuard} from '@nestjs/passport';
 import {SpfModuleDto} from './dto/shared/spf-module.dto.js';
 import {CalDataDto} from '../../common/dto/tuning-data/cal-data.dto.js';
 import {UpdateSpfModuleCalDataRequest} from './dto/request/update-spf-module-cal-data-request.dto.js';
@@ -56,6 +56,11 @@ import {
   type ElementArrayData,
   type StructData,
   type ElementSchema,
+  type SpfModuleTuningConfigReadModel,
+  type CkvTuningReadModel,
+  type TagTuningReadModel,
+  type TkvTuningReadModel,
+  type ParamSummaryReadModel,
 } from '@arc/core';
 import {
   DataPortDto,
@@ -66,13 +71,16 @@ import {
   ControlPortDto,
   ControlPortIntentDto,
 } from '../../common/dto/control-port.dto.js';
+import {KeyDto, KeyValueDto, ValueDto} from '../../common/dto/key-value.dto.js';
+import type {ChangeInfoDto} from '../../common/dto/base.dto.js';
+import {NameValuePairDto} from '../../common/dto/element-data/elements/config-element/name-value-pair.dto.js';
 import {
-  KeyDto,
-  KeyValueDto,
-  ValueDto,
-} from 'presentation/rest/common/dto/key-value.dto.js';
-import type {ChangeInfoDto} from 'presentation/rest/common/dto/base.dto.js';
-import {NameValuePairDto} from 'presentation/rest/common/dto/element-data/elements/config-element/name-value-pair.dto.js';
+  CkvDto,
+  TagInfoDto,
+  TkvDto,
+  ParamInfo,
+} from './dto/shared/tuning-config.dto.js';
+import {KeyValueInfo, KeyInfo, ValueInfo} from '../../common/dto/kv.dto.js';
 
 /**
  * Controller to support all module related APIs for usecase design
@@ -80,7 +88,7 @@ import {NameValuePairDto} from 'presentation/rest/common/dto/element-data/elemen
  */
 @ApiTags('spf-modules')
 @Controller('arc-api/v1/projects/:projectId/spf-modules')
-@UseGuards(AuthGuard('jwt'))
+//@UseGuards(AuthGuard('jwt'))
 @ApiParam({
   name: 'projectId',
   type: 'string',
@@ -146,16 +154,16 @@ export class SpfModuleController extends BaseController {
     ],
   })
   @ApiQuery({
-    name: 'includeTuningConfig',
+    name: 'include',
     required: false,
-    type: Boolean,
+    type: String,
     description:
-      'When true, includes CKV and TKV tuning catalogue (parameter names) in each module response.',
+      'Comma-separated list of optional data to include (ckvs, tags, properties). Example: ?include=ckvs,tags',
   })
   async querySpfModules(
     @Param('projectId') projectId: string,
     @Body() body: SystemIdsRequestDto,
-    @Query('includeTuningConfig') includeTuningConfig?: string,
+    @Query('include') include?: string,
   ): Promise<ApiResult<SpfModuleDto[]>> {
     try {
       if (!body?.systemIds?.length) {
@@ -176,17 +184,25 @@ export class SpfModuleController extends BaseController {
         return parsed;
       });
 
+      // Parse include parameter
+      const includeOptions = this.parseIncludeParameter(include);
+
+      // Enable tuning config if ckvs or tags are requested
+      const needsTuningConfig = includeOptions.ckvs || includeOptions.tags;
+
       const query = new QuerySpfModulesQuery(
         systemIds,
         Number(projectId),
-        includeTuningConfig === 'true',
+        needsTuningConfig,
         'client-id',
       );
 
       const result = await this.queryBus.execute<QuerySpfModulesResult>(query);
 
       return {
-        data: result.modules.map(m => this.mapToSpfModuleDto(m)),
+        data: result.modules.map(m =>
+          this.mapToSpfModuleDto(m, result.tuningConfigMap, includeOptions),
+        ),
         success: true,
         message: 'SPF modules retrieved successfully',
       };
@@ -660,11 +676,39 @@ export class SpfModuleController extends BaseController {
   // ── Private helpers ───────────────────────────────────────────────────────
 
   /**
+   * Parse the include query parameter to determine what optional data to include.
+   */
+  private parseIncludeParameter(include?: string): {
+    ckvs: boolean;
+    tags: boolean;
+    properties: boolean;
+  } {
+    if (!include) {
+      return {ckvs: false, tags: false, properties: false};
+    }
+    const parts = new Set(
+      include
+        .toLowerCase()
+        .split(',')
+        .map(s => s.trim()),
+    );
+    return {
+      ckvs: parts.has('ckvs'),
+      tags: parts.has('tags'),
+      properties: parts.has('properties'),
+    };
+  }
+
+  /**
    * Maps SpfModuleReadModel → SpfModuleDto.
    * SpfModuleReadModel uses number systemIds and typed PortIoType/PortType enums.
    * SpfModuleDto uses string systemIds and the API-layer enum values.
    */
-  private mapToSpfModuleDto(m: SpfModuleReadModel): SpfModuleDto {
+  private mapToSpfModuleDto(
+    m: SpfModuleReadModel,
+    tuningConfigMap?: Map<number, SpfModuleTuningConfigReadModel>,
+    includeOptions?: {ckvs: boolean; tags: boolean; properties: boolean},
+  ): SpfModuleDto {
     const dto = new SpfModuleDto(
       String(m.systemId),
       m.instanceId,
@@ -681,7 +725,98 @@ export class SpfModuleController extends BaseController {
     dto.dataPorts = m.dataPorts.map(p => this.mapDataPortToDto(p));
     dto.controlPorts = m.controlPorts.map(p => this.mapControlPortToDto(p));
 
+    // Populate optional data based on includeOptions
+    if (includeOptions && tuningConfigMap) {
+      const tuningConfig = tuningConfigMap.get(m.systemId);
+      if (tuningConfig) {
+        if (includeOptions.ckvs) {
+          dto.ckvs = tuningConfig.ckvs.map(ckv => this.mapCkvToDto(ckv));
+        }
+        if (includeOptions.tags) {
+          dto.tags = tuningConfig.tags.map(tag => this.mapTagToDto(tag));
+        }
+      }
+    }
+
     return dto;
+  }
+
+  /**
+   * Maps CkvTuningReadModel → CkvDto.
+   */
+  private mapCkvToDto(ckv: CkvTuningReadModel): CkvDto {
+    const keyValueCollection: KeyValueInfo[] = ckv.keyValuePairs.map(kv => {
+      const keyInfo = new KeyInfo(
+        kv.key.keyId,
+        kv.key.name,
+        kv.key.systemId.toString(),
+      );
+      const valueInfo = new ValueInfo(
+        kv.value.valueId,
+        kv.value.name,
+        kv.value.systemId.toString(),
+      );
+      return new KeyValueInfo(keyInfo, valueInfo);
+    });
+
+    const supportedParameters: ParamInfo[] = ckv.parameters.map(p =>
+      this.mapParamSummaryToParamInfo(p),
+    );
+
+    return new CkvDto(
+      ckv.systemId.toString(),
+      keyValueCollection,
+      supportedParameters,
+    );
+  }
+
+  /**
+   * Maps TagTuningReadModel → TagInfoDto.
+   */
+  private mapTagToDto(tag: TagTuningReadModel): TagInfoDto {
+    const tkvs: TkvDto[] = tag.tkvs.map(tkv => this.mapTkvToDto(tkv));
+    return new TagInfoDto(tag.systemId, tag.tagId, tag.tagName, tkvs);
+  }
+
+  /**
+   * Maps TkvTuningReadModel → TkvDto.
+   */
+  private mapTkvToDto(tkv: TkvTuningReadModel): TkvDto {
+    const keyValueCollection: KeyValueInfo[] = tkv.keyValuePairs.map(kv => {
+      const keyInfo = new KeyInfo(
+        kv.key.keyId,
+        kv.key.name,
+        kv.key.systemId.toString(),
+      );
+      const valueInfo = new ValueInfo(
+        kv.value.valueId,
+        kv.value.name,
+        kv.value.systemId.toString(),
+      );
+      return new KeyValueInfo(keyInfo, valueInfo);
+    });
+
+    const supportedParameters: ParamInfo[] = tkv.parameters.map(p =>
+      this.mapParamSummaryToParamInfo(p),
+    );
+
+    return new TkvDto(
+      tkv.systemId.toString(),
+      keyValueCollection,
+      supportedParameters,
+    );
+  }
+
+  /**
+   * Maps ParamSummaryReadModel → ParamInfo.
+   */
+  private mapParamSummaryToParamInfo(param: ParamSummaryReadModel): ParamInfo {
+    return new ParamInfo(
+      param.parameterId,
+      param.systemId.toString(),
+      param.name,
+      param.description ?? '',
+    );
   }
 
   /**

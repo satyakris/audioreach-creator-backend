@@ -2565,8 +2565,7 @@
                           "containerId": 601,
                           "maxInputPortsSupported": 2,
                           "maxOutputPortsSupported": 2,
-                          "maxControlPortsSupported": 1,
-                          "heapId": 1
+                          "maxControlPortsSupported": 1
                         },
                         {
                           "systemId": "1002",
@@ -2621,8 +2620,7 @@
                           "containerId": 601,
                           "maxInputPortsSupported": 1,
                           "maxOutputPortsSupported": 1,
-                          "maxControlPortsSupported": 2,
-                          "heapId": 1
+                          "maxControlPortsSupported": 2
                         }
                       ],
                       "dataLinks": [
@@ -2783,8 +2781,7 @@
                           "containerId": 601,
                           "maxInputPortsSupported": 2,
                           "maxOutputPortsSupported": 2,
-                          "maxControlPortsSupported": 1,
-                          "heapId": 1
+                          "maxControlPortsSupported": 1
                         },
                         {
                           "systemId": "1002",
@@ -2839,8 +2836,7 @@
                           "containerId": 601,
                           "maxInputPortsSupported": 1,
                           "maxOutputPortsSupported": 1,
-                          "maxControlPortsSupported": 2,
-                          "heapId": 1
+                          "maxControlPortsSupported": 2
                         }
                       ],
                       "dataLinks": [
@@ -3503,9 +3499,8 @@
             "name": "include",
             "required": false,
             "in": "query",
-            "description": "Comma-separated list of optional data to include (ckvs, tags, properties)",
+            "description": "Comma-separated list of optional data to include (ckvs, tags, properties). Example: ?include=ckvs,tags",
             "schema": {
-              "example": "ckvs,tags",
               "type": "string"
             }
           }
@@ -3639,8 +3634,7 @@
                       "containerId": 789,
                       "maxInputPortsSupported": 5,
                       "maxOutputPortsSupported": 3,
-                      "maxControlPortsSupported": 2,
-                      "heapId": 101
+                      "maxControlPortsSupported": 2
                     }
                   }
                 }
@@ -7335,7 +7329,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "keyValueCollection",
           "usecaseType"
@@ -7393,7 +7386,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "keyValueCollection",
           "usecaseType"
@@ -7470,7 +7462,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
@@ -7585,7 +7576,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
@@ -7663,7 +7653,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
@@ -7931,10 +7920,6 @@
             "type": "number",
             "description": "Maximum number of control ports supported"
           },
-          "heapId": {
-            "type": "number",
-            "description": "Heap ID"
-          },
           "ckvs": {
             "description": "Calibration key-values configuration",
             "type": "array",
@@ -7958,7 +7943,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
@@ -7971,8 +7955,7 @@
           "containerId",
           "maxInputPortsSupported",
           "maxOutputPortsSupported",
-          "maxControlPortsSupported",
-          "heapId"
+          "maxControlPortsSupported"
         ]
       },
       "DataLinkDto": {
@@ -8041,7 +8024,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
@@ -8120,7 +8102,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
@@ -8198,7 +8179,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
@@ -8447,7 +8427,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "name"
         ]
@@ -8501,7 +8480,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "gkv",
           "aliasInfo",
@@ -8559,7 +8537,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "gkv",
           "aliasInfo"
@@ -8593,7 +8570,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "name",
           "usecases"
@@ -8620,7 +8596,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "name"
         ]
@@ -8699,7 +8674,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "keyValuePairs"
         ]
@@ -8729,7 +8703,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "parameterId",
           "name"
@@ -8801,7 +8774,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "moduleDefinitionId",
           "name"
@@ -8873,7 +8845,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "parameterId",
           "name",
@@ -8911,7 +8882,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "Ckv",
           "parameters"
@@ -9252,7 +9222,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "Ckv",
           "parameters"
@@ -9304,7 +9273,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "Tkv",
           "parameters"
@@ -9468,7 +9436,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
@@ -9526,7 +9493,6 @@
           }
         },
         "required": [
-          "changeInfo",
           "systemId",
           "id",
           "name",
