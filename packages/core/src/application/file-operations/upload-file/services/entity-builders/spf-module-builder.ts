@@ -121,7 +121,7 @@ export class SpfModuleBuilder {
         parsedAcdb,
         fileSystemId,
       );
-      if (awspTagDefinitions && awspTagDefinitions.length > 0) {
+      if (awspTagDefinitions == undefined) {
         await this.attachTagData(
           result.entities,
           parsedAcdb,
