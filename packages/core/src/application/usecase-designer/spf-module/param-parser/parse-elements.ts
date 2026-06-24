@@ -7,6 +7,7 @@ import type {
   ConfigElement,
   StructElement,
   ElementArray,
+  StructArray,
   DefinitionElement,
 } from './types/element-definition.js';
 import type {
@@ -42,6 +43,79 @@ function rawFallback(payload: Uint8Array): ConfigElementData {
   };
 }
 
+/** Loosely-typed representation of an original element object from `paramStructure` JSON. */
+type OriginalElement = Record<string, unknown>;
+
+/**
+ * Converts a `paramStructure` JSON string into a normalized `DefinitionElement[]`.
+ *
+ * Handles special cases where `template` is not stored directly on the element:
+ * - `StructArray` with `keyStructureDefinition` → `StructArray` with a `StructElement` template
+ * - `ConfigElementArray` → `ElementArray` with a `ConfigElement` template (self-derived)
+ */
+function convertParamDefinition(paramStructure: string): DefinitionElement[] {
+  const original = JSON.parse(paramStructure) as OriginalElement[];
+  return original.map(el => normalizeElement(el));
+}
+
+/**
+ * Normalizes an original element, routing array types to their respective handlers.
+ *
+ * - `StructArray`        → `normalizeStructArray`
+ * - `ConfigElementArray` → `normalizeConfigElementArray`
+ * - All other types      → passed through unchanged
+ */
+function normalizeElement(original: OriginalElement): DefinitionElement {
+  const elementType = original.elementType as string;
+  if (elementType === PARAMETER_ELEMENT_TYPE.StructArray) {
+    return normalizeStructArray(original);
+  }
+  if (elementType === PARAMETER_ELEMENT_TYPE.ElementArray) {
+    return normalizeConfigElementArray(original);
+  }
+  return original as unknown as DefinitionElement;
+}
+
+/**
+ * Normalizes a raw `StructArray` element into a typed `StructArray`.
+ *
+ * The `keyStructureDefinition` sibling field becomes the `StructElement` template.
+ * Its child elements are stored under `children` in the source JSON and are
+ * remapped to `elements` as required by `StructElement`.
+ */
+function normalizeStructArray(original: OriginalElement): StructArray {
+  const keyStructDef = original.keyStructureDefinition as OriginalElement;
+  const template: StructElement = {
+    ...keyStructDef,
+    elementType: PARAMETER_ELEMENT_TYPE.Struct,
+    // Source JSON uses "children" for child elements; StructElement uses "elements"
+    elements: (keyStructDef.children as DefinitionElement[] | undefined) ?? [],
+  } as unknown as StructElement;
+  return {
+    ...original,
+    elementType: PARAMETER_ELEMENT_TYPE.StructArray,
+    template,
+  } as unknown as StructArray;
+}
+
+/**
+ * Normalizes a raw `ConfigElementArray` element into a typed `ElementArray`.
+ *
+ * The element itself becomes the `ConfigElement` template — same fields,
+ * with `elementType` changed to `'ConfigElement'`.
+ */
+function normalizeConfigElementArray(original: OriginalElement): ElementArray {
+  const template: ConfigElement = {
+    ...original,
+    elementType: PARAMETER_ELEMENT_TYPE.ConfigElement,
+  } as unknown as ConfigElement;
+  return {
+    ...original,
+    elementType: PARAMETER_ELEMENT_TYPE.ElementArray,
+    template,
+  } as unknown as ElementArray;
+}
+
 /**
  * Parses binary parameter payloads into structured `ParsedElementData` trees.
  *
@@ -52,7 +126,8 @@ function rawFallback(payload: Uint8Array): ConfigElementData {
  * Supported element types:
  * - `ConfigElement` — scalar value (UInt8/16/32/64, Int8/16/32/64, Float, Double, RawData)
  * - `Struct` — named group of child elements parsed in order
- * - `ElementArray` — fixed-length or formula-driven array of a template element
+ * - `ElementArray` — fixed-length or formula-driven array of scalar items
+ * - `StructArray` — fixed-length or formula-driven array of struct items
  *
  * On any error (malformed JSON, buffer overflow, or other runtime error),
  * returns a single `_raw` `ConfigElementData` containing the full payload as a
@@ -67,9 +142,7 @@ export function parseParameterData(
   paramStructure: string,
 ): ParsedElementData[] {
   try {
-    // paramStructure is validated in the DB layer before being stored;
-    // cast directly to DefinitionElement[] without re-validating.
-    const definitions = JSON.parse(paramStructure) as DefinitionElement[];
+    const definitions = convertParamDefinition(paramStructure);
     const reader = new BinaryDataReader(payload);
     const parsed: ParsedElementData[] = [];
     for (const element of definitions) {
@@ -99,8 +172,10 @@ function parseElement(
       return parseConfigElement(element, reader);
     case 'Struct':
       return parseStruct(element, reader, parsedSoFar);
-    case 'ElementArray':
+    case 'ConfigElementArray':
       return parseElementArray(element, reader, parsedSoFar);
+    case 'StructArray':
+      return parseStructArray(element, reader, parsedSoFar);
   }
 }
 
@@ -213,11 +288,9 @@ function parseStruct(
 }
 
 /**
- * Parses an `ElementArray` by determining its length (from `arrayLength` or by
- * evaluating `arrayLenFormulaStr` against previously parsed elements), then
- * parsing each item using the array's template element definition.
- *
- * Items are named `<arrayName>[i]` when the template element has no explicit name.
+ * Parses an `ElementArray` (scalar items) by determining its length, then
+ * parsing each item using `element.template` (a `ConfigElement`) as the definition.
+ * Items are named `<arrayName>[i]`.
  */
 function parseElementArray(
   element: ElementArray,
@@ -228,16 +301,14 @@ function parseElementArray(
     element.arrayLength ??
     computeArrayLength(element.arrayLenFormulaStr ?? '', parsedSoFar);
 
-  const templateElements = element.template.elements;
   const arrayName = element.name;
-
-  const templateSchema = buildTemplateSchema(templateElements, arrayName);
+  const templateSchema = buildTemplateSchema(element.template, arrayName);
 
   const items: ParsedElementData[] = [];
   for (let i = 0; i < length; i++) {
     items.push(
       parseTemplateItem(
-        templateElements,
+        element.template,
         reader,
         [...parsedSoFar, ...items],
         arrayName,
@@ -269,132 +340,168 @@ function parseElementArray(
 }
 
 /**
- * Builds a `ParsedElementSchema` descriptor from the template element definition.
- * For single-element templates the schema mirrors the element's type.
- * For multi-element templates a synthetic `STRUCT` schema is returned.
+ * Parses a `StructArray` (struct items) by determining its length, then
+ * parsing each item using `element.template` (a `StructElement`) as the definition.
+ * Items are named `<arrayName>[i]`.
  */
-function buildTemplateSchema(
-  templateElements: DefinitionElement[],
-  arrayName: string,
-): ElementSchema {
-  if (templateElements.length === 1) {
-    return buildSingleElementSchema(templateElements[0], arrayName);
+function parseStructArray(
+  element: StructArray,
+  reader: BinaryDataReader,
+  parsedSoFar: ParsedElementData[],
+): ElementArrayData {
+  const length =
+    element.arrayLength ??
+    computeArrayLength(element.arrayLenFormulaStr ?? '', parsedSoFar);
+
+  const arrayName = element.name;
+  const templateSchema = buildTemplateSchema(element.template, arrayName);
+
+  const items: ParsedElementData[] = [];
+  for (let i = 0; i < length; i++) {
+    items.push(
+      parseTemplateItem(
+        element.template,
+        reader,
+        [...parsedSoFar, ...items],
+        arrayName,
+        i,
+      ),
+    );
   }
+
   return {
-    type: PARAMETER_ELEMENT_TYPE.Struct,
+    type: PARAMETER_ELEMENT_TYPE.ElementArray,
     name: arrayName,
-    isReadOnly: false,
-    structureType: '',
-    children: [],
+    description: element.description,
+    group: element.group,
+    subgroup: element.subgroup,
+    isReadOnly: element.isReadOnly ?? false,
+    alignment: element.alignment,
+    channel: element.channel,
+    groupSet: element.groupSet,
+    rtmPlotType: element.rtmPlotType,
+    copySrc: element.copySrc,
+    copySrcInfoList: element.copySrcInfoList,
+    displayType: element.displayType,
+    policy: element.policy,
+    template: templateSchema,
+    value: items,
+    length,
+    arrayLenFormulaStr: element.arrayLenFormulaStr,
   };
 }
 
-function buildSingleElementSchema(
-  el: DefinitionElement,
+/**
+ * Builds an `ElementSchema` descriptor from a single `DefinitionElement`.
+ * Used to describe the shape of each item in an array.
+ */
+function buildTemplateSchema(
+  element: DefinitionElement,
   arrayName: string,
 ): ElementSchema {
-  const name = el.name ?? arrayName;
-  switch (el.elementType) {
+  const name = element.name ?? arrayName;
+  switch (element.elementType) {
     case 'ConfigElement':
       return {
         type: PARAMETER_ELEMENT_TYPE.ConfigElement,
         name,
-        isReadOnly: el.isReadOnly ?? false,
-        dataType: el.dataType,
-        unit: el.unitStr,
-        displayType: el.displayType,
-        policy: el.policy,
-        qFormat: el.qFormat,
-        precision: el.precision,
-        defaultValue: el.defaultValue,
-        min: el.min,
-        max: el.max,
-        rangeList: el.rangeList,
-        dependentOnElements: el.dependentOnElements,
-        description: el.description,
-        alignment: el.alignment,
-        channel: el.channel,
-        groupSet: el.groupSet,
-        rtmPlotType: el.rtmPlotType,
-        copySrc: el.copySrc,
-        displayName: el.displayName,
-        linkedByForFormula: el.linkedByForFormula,
-        defaultDataDepends: el.defaultDataDepends,
+        isReadOnly: element.isReadOnly ?? false,
+        dataType: element.dataType,
+        unit: element.unitStr,
+        displayType: element.displayType,
+        policy: element.policy,
+        qFormat: element.qFormat,
+        precision: element.precision,
+        defaultValue: element.defaultValue,
+        min: element.min,
+        max: element.max,
+        rangeList: element.rangeList,
+        dependentOnElements: element.dependentOnElements,
+        description: element.description,
+        alignment: element.alignment,
+        channel: element.channel,
+        groupSet: element.groupSet,
+        rtmPlotType: element.rtmPlotType,
+        copySrc: element.copySrc,
+        displayName: element.displayName,
+        linkedByForFormula: element.linkedByForFormula,
+        defaultDataDepends: element.defaultDataDepends,
       };
     case 'Struct':
       return {
         type: PARAMETER_ELEMENT_TYPE.Struct,
         name,
         isReadOnly: false,
-        description: el.description,
-        group: el.group,
-        subgroup: el.subgroup,
-        structureType: el.structureType,
-        alignment: el.alignment,
-        channel: el.channel,
-        groupSet: el.groupSet,
-        rtmPlotType: el.rtmPlotType,
-        copySrc: el.copySrc,
+        description: element.description,
+        group: element.group,
+        subgroup: element.subgroup,
+        structureType: element.structureType,
+        alignment: element.alignment,
+        channel: element.channel,
+        groupSet: element.groupSet,
+        rtmPlotType: element.rtmPlotType,
+        copySrc: element.copySrc,
         children: [],
       };
-    default:
+    case 'ConfigElementArray':
       return {
         type: PARAMETER_ELEMENT_TYPE.ElementArray,
         name,
-        isReadOnly: el.isReadOnly ?? false,
-        description: el.description,
-        group: el.group,
-        subgroup: el.subgroup,
-        alignment: el.alignment,
-        channel: el.channel,
-        groupSet: el.groupSet,
-        rtmPlotType: el.rtmPlotType,
-        copySrc: el.copySrc,
-        copySrcInfoList: el.copySrcInfoList,
-        displayType: el.displayType,
-        policy: el.policy,
-        template: buildTemplateSchema(
-          el.template.elements,
-          el.name ?? arrayName,
-        ),
-        length: el.arrayLength,
-        arrayLenFormulaStr: el.arrayLenFormulaStr,
+        isReadOnly: element.isReadOnly ?? false,
+        description: element.description,
+        group: element.group,
+        subgroup: element.subgroup,
+        alignment: element.alignment,
+        channel: element.channel,
+        groupSet: element.groupSet,
+        rtmPlotType: element.rtmPlotType,
+        copySrc: element.copySrc,
+        copySrcInfoList: element.copySrcInfoList,
+        displayType: element.displayType,
+        policy: element.policy,
+        template: buildTemplateSchema(element.template, name),
+        length: element.arrayLength,
+        arrayLenFormulaStr: element.arrayLenFormulaStr,
+      };
+    case 'StructArray':
+      return {
+        type: PARAMETER_ELEMENT_TYPE.ElementArray,
+        name,
+        isReadOnly: element.isReadOnly ?? false,
+        description: element.description,
+        group: element.group,
+        subgroup: element.subgroup,
+        alignment: element.alignment,
+        channel: element.channel,
+        groupSet: element.groupSet,
+        rtmPlotType: element.rtmPlotType,
+        copySrc: element.copySrc,
+        copySrcInfoList: element.copySrcInfoList,
+        displayType: element.displayType,
+        policy: element.policy,
+        template: buildTemplateSchema(element.template, name),
+        length: element.arrayLength,
+        arrayLenFormulaStr: element.arrayLenFormulaStr,
       };
   }
 }
 
 /**
- * Parses a single array item using the template element definition.
- * For single-element templates the item is parsed directly, with an auto-generated
- * `<arrayName>[index]` name when the template element has no explicit name.
- * For multi-element templates the item is parsed as an anonymous struct.
+ * Parses a single array item at the given `index` using `template` as the
+ * item element definition. The item is given the name `<arrayName>[index]`.
  */
 function parseTemplateItem(
-  templateElements: DefinitionElement[],
+  template: DefinitionElement,
   reader: BinaryDataReader,
   parsedSoFar: ParsedElementData[],
   arrayName: string,
   index: number,
 ): ParsedElementData {
-  if (templateElements.length === 1) {
-    const el = templateElements[0];
-    const namedEl: DefinitionElement = {
-      ...el,
-      name: el.name ?? `${arrayName}[${index}]`,
-    };
-    return parseElement(namedEl, reader, parsedSoFar);
-  }
-  const children: ParsedElementData[] = [];
-  for (const child of templateElements) {
-    children.push(parseElement(child, reader, [...parsedSoFar, ...children]));
-  }
-  return {
-    type: PARAMETER_ELEMENT_TYPE.Struct,
-    name: `${arrayName}[${index}]`,
-    isReadOnly: false,
-    structureType: '',
-    value: children,
+  const namedTemplate: DefinitionElement = {
+    ...template,
+    name: template.name ?? `${arrayName}[${index}]`,
   };
+  return parseElement(namedTemplate, reader, parsedSoFar);
 }
 
 /**

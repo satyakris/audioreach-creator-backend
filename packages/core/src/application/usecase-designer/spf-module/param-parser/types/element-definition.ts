@@ -8,7 +8,8 @@ import type {DataType} from '../../../../file-operations/shared/awsp-serializers
 export const PARAMETER_ELEMENT_TYPE = {
   ConfigElement: 'ConfigElement',
   Struct: 'Struct',
-  ElementArray: 'ElementArray',
+  ElementArray: 'ConfigElementArray',
+  StructArray: 'StructArray',
 } as const;
 
 export type ParameterElementType =
@@ -63,7 +64,11 @@ export interface ElementArray {
   elementType: typeof PARAMETER_ELEMENT_TYPE.ElementArray;
   name: string;
   description?: string;
-  template: {elements: DefinitionElement[]};
+  /**
+   * Describes what each array item looks like — always a `ConfigElement`.
+   * Synthesized by `convertParamDefinition` from the array element's own fields.
+   */
+  template: DefinitionElement;
   arrayLenFormulaStr?: string;
   arrayLength?: number;
   groupSet?: number;
@@ -79,4 +84,32 @@ export interface ElementArray {
   isReadOnly?: boolean;
 }
 
-export type DefinitionElement = ConfigElement | StructElement | ElementArray;
+export interface StructArray {
+  elementType: typeof PARAMETER_ELEMENT_TYPE.StructArray;
+  name: string;
+  description?: string;
+  /**
+   * Describes what each array item looks like — always a `StructElement`.
+   * Built from `keyStructureDefinition` by `convertParamDefinition`.
+   */
+  template: StructElement;
+  arrayLenFormulaStr?: string;
+  arrayLength?: number;
+  groupSet?: number;
+  alignment?: number;
+  channel?: number;
+  rtmPlotType?: string;
+  group?: string;
+  subgroup?: string;
+  copySrc?: string;
+  copySrcInfoList?: string[];
+  displayType?: string;
+  policy?: string;
+  isReadOnly?: boolean;
+}
+
+export type DefinitionElement =
+  | ConfigElement
+  | StructElement
+  | ElementArray
+  | StructArray;
